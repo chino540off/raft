@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include <store.hh>
+#include <raft/store.hh>
 
 int
 main(void)

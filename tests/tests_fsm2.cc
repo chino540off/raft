@@ -1,18 +1,18 @@
 #include <iostream>
-#include <raft.hh>
+#include <raft/fsm.hh>
 
 #include <cassert>
 
 int main()
 {
-  raft::fsm raft;
+  raft::fsm fsm;
 
-  assert(raft.state() == raft::fsm::state::follower);
-  assert(!raft(raft::fsm::event::majority, []() { return true; }));
+  assert(fsm.state() == raft::fsm::state::follower);
+  assert(!fsm(raft::fsm::event::majority, []() { return true; }));
 
-  assert(raft(raft::fsm::event::election, []() { return true; }));
-  assert(raft.state() == raft::fsm::state::candidate);
+  assert(fsm(raft::fsm::event::election, []() { return true; }));
+  assert(fsm.state() == raft::fsm::state::candidate);
 
-  assert(raft(raft::fsm::event::majority, []() { return true; }));
-  assert(raft.state() == raft::fsm::state::leader);
+  assert(fsm(raft::fsm::event::majority, []() { return true; }));
+  assert(fsm.state() == raft::fsm::state::leader);
 }

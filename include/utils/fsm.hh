@@ -9,8 +9,9 @@
 # include <sstream>
 # include <string>
 
-namespace fsm
-{
+namespace utils {
+namespace fsm {
+
   template<typename T>
   inline std::string to_string(T const & t)
   {
@@ -312,6 +313,8 @@ namespace fsm
     return t.debug(out), out;
   }
 
-}
+}; /** !fsm  */
+}; /** !utils  */
+
 #endif /** !FSM_HH_  */
 
