@@ -6,24 +6,25 @@
 
 namespace raft {
 
-enum event
-{
-  election,
-  majority,
-  high_term,
-  new_term,
-  new_leader,
-};
-
-enum state
-{
-  follower,
-  candidate,
-  leader,
-};
-
 class fsm
 {
+  public:
+    enum event
+    {
+      election,
+      majority,
+      high_term,
+      new_term,
+      new_leader,
+    };
+
+    enum state
+    {
+      follower,
+      candidate,
+      leader,
+    };
+
   public:
     fsm()
     {

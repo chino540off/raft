@@ -7,12 +7,12 @@ int main()
 {
   raft::fsm raft;
 
-  assert(raft.state() == raft::state::follower);
-  assert(!raft(raft::event::majority, []() { return true; }));
+  assert(raft.state() == raft::fsm::state::follower);
+  assert(!raft(raft::fsm::event::majority, []() { return true; }));
 
-  assert(raft(raft::event::election, []() { return true; }));
-  assert(raft.state() == raft::state::candidate);
+  assert(raft(raft::fsm::event::election, []() { return true; }));
+  assert(raft.state() == raft::fsm::state::candidate);
 
-  assert(raft(raft::event::majority, []() { return true; }));
-  assert(raft.state() == raft::state::leader);
+  assert(raft(raft::fsm::event::majority, []() { return true; }));
+  assert(raft.state() == raft::fsm::state::leader);
 }
