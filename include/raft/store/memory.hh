@@ -17,7 +17,7 @@ class memory
       return true;
     }
 
-    Value const &
+    Value
     r(Key const & k) const
     {
       return _map.at(k);

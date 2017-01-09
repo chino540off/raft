@@ -1,7 +1,7 @@
 #include <iostream>
-#include <raft/fsm.hh>
-
 #include <cassert>
+
+#include <raft/fsm.hh>
 
 int main()
 {
