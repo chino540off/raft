@@ -1,17 +1,22 @@
 #ifndef RAFT_HH_
 # define RAFT_HH_
 
+# include <memory>
+
 namespace raft {
 
+template <typename UD>
 class node
 {
   public:
-    template <typename T>
-    node(T id):
+    template <typename I>
+    node(I const & id,
+         std::shared_ptr<UD> const & user_data = nullptr):
       _next_idx(1),
       _match_idx(0),
       _id(id),
-      _flags(NODE_VOTING)
+      _flags(NODE_VOTING),
+      _user_data(user_data)
     {
     }
 
@@ -20,8 +25,8 @@ class node
     {
       return _next_idx;
     }
-    template <typename T>
-    auto next_idx(T const & next_idx)
+    template <typename I>
+    auto next_idx(I const & next_idx)
     {
       _next_idx = (next_idx < 1) ? 1 : next_idx;
     }
@@ -30,8 +35,8 @@ class node
     {
       return _match_idx;
     }
-    template <typename T>
-    auto match_idx(T const & match_idx)
+    template <typename I>
+    auto match_idx(I const & match_idx)
     {
       _match_idx = match_idx;
     }
@@ -94,10 +99,11 @@ class node
     }
 
   private:
-    unsigned int _next_idx;
-    unsigned int _match_idx;
-    unsigned int _id;
-    unsigned int _flags;
+    unsigned int        _next_idx;
+    unsigned int        _match_idx;
+    unsigned int        _id;
+    unsigned int        _flags;
+    std::shared_ptr<UD> _user_data;
 };
 
 }; /** !raft  */
