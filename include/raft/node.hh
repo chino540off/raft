@@ -1,17 +1,20 @@
-#ifndef RAFT_HH_
-# define RAFT_HH_
+#ifndef RAFT_NODE_HH_
+# define RAFT_NODE_HH_
 
 # include <memory>
 
 namespace raft {
 
-template <typename UD>
+template <typename T>
 class node
 {
   public:
+    typedef std::shared_ptr<T> user_data_t;
+
+  public:
     template <typename I>
     node(I const & id,
-         std::shared_ptr<UD> const & user_data = nullptr):
+         user_data_t const & user_data = nullptr):
       _next_idx(1),
       _match_idx(0),
       _id(id),
@@ -99,14 +102,14 @@ class node
     }
 
   private:
-    unsigned int        _next_idx;
-    unsigned int        _match_idx;
-    unsigned int        _id;
-    unsigned int        _flags;
-    std::shared_ptr<UD> _user_data;
+    unsigned int  _next_idx;
+    unsigned int  _match_idx;
+    unsigned int  _id;
+    unsigned int  _flags;
+    user_data_t   _user_data;
 };
 
 }; /** !raft  */
 
-#endif /** !RAFT_HH_  */
+#endif /** !RAFT_NODE_HH_  */
 

@@ -1,5 +1,5 @@
-#ifndef RAFT_HH_
-# define RAFT_HH_
+#ifndef RAFT_FSM_HH_
+# define RAFT_FSM_HH_
 
 # include <utils/fsm.hh>
 # include <iostream>
@@ -60,5 +60,5 @@ class fsm
 };
 
 };
-#endif /** !RAFT_HH_  */
+#endif /** !RAFT_FSM_HH_  */
 
