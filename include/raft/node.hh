@@ -109,6 +109,14 @@ class node
     user_data_t   _user_data;
 };
 
+template <typename ostream, typename T>
+ostream &
+operator<<(ostream & os, node<T> const & node)
+{
+  os << "Node(" << node.id() << ")";
+  return os;
+}
+
 }; /** !raft  */
 
 #endif /** !RAFT_NODE_HH_  */
