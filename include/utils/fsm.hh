@@ -1,5 +1,5 @@
-#ifndef FSM_HH_
-# define FSM_HH_
+#ifndef UTILS_FSM_HH_
+# define UTILS_FSM_HH_
 
 # include <algorithm>
 # include <deque>
@@ -12,97 +12,78 @@
 namespace utils {
 namespace fsm {
 
-  template<typename T>
-  inline std::string to_string(T const & t)
-  {
-      std::stringstream ss;
-      return ss << t ? ss.str() : std::string();
-  }
-
-  template<>
-  inline std::string to_string(std::string const & t)
-  {
-      return t;
-  }
-
   typedef std::function<bool(void)> callback;
   typedef std::function<bool(fsm::callback)> transit;
 
-  struct state
+  template <typename T>
+  struct node
   {
-    int name;
+    static node<T> _null;
+    static node<T> _init;
+    static node<T> _push;
+    static node<T> _back;
+    static node<T> _quit;
+
+    T value;
     fsm::callback cb;
 
-    state(int const & name = 'null'):
-      name(name)
-    {}
+    template <typename std::enable_if<std::is_enum<T>::value>::type * = nullptr>
+    node(T v): value(v) { }
 
-    state operator()(fsm::callback cb) const
+    node operator()(fsm::callback cb) const
     {
-      state self = *this;
+      node self = *this;
       self.cb = cb;
       return self;
     }
 
-    operator int () const
+    explicit operator T() const
     {
-        return name;
+      return value;
     }
 
-    bool operator<(state const & other) const
+    bool operator<(node const & other) const
     {
-        return name < other.name;
+      return value < other.value;
     }
-    bool operator==(state const & other) const
+    bool operator==(node const & other) const
     {
-        return name == other.name;
-    }
-
-    template<typename ostream>
-    inline friend ostream & operator<<(ostream & out, state const & t)
-    {
-      if (t.name >= 256)
-      {
-        out << char((t.name >> 24) & 0xff);
-        out << char((t.name >> 16) & 0xff);
-        out << char((t.name >>  8) & 0xff);
-        out << char((t.name >>  0) & 0xff);
-      }
-      else
-      {
-        out << t.name;
-      }
-      return out;
+      return value == other.value;
     }
   };
 
-  typedef state trigger;
+  template <typename T> node<T> node<T>::_null = node<T>((T)'null');
+  template <typename T> node<T> node<T>::_init = node<T>((T)'init');
+  template <typename T> node<T> node<T>::_push = node<T>((T)'push');
+  template <typename T> node<T> node<T>::_back = node<T>((T)'back');
+  template <typename T> node<T> node<T>::_quit = node<T>((T)'quit');
 
+  template <typename T>
+  using event = node<T>;
+
+  template <typename T>
+  using state = node<T>;
+
+  template <typename S, typename E>
   struct transition
   {
-    fsm::state previous, current;
-    fsm::trigger trigger;
+    fsm::state<S> from, to;
+    fsm::event<E> event;
   };
 
-  template<typename ostream>
-  inline ostream & operator<<(ostream & out, fsm::transition const & t)
-  {
-      out << t.previous << " -> " << t.trigger << " -> " << t.current;
-      return out;
-  }
-
+  template <typename S, typename E>
   class stack
   {
     public:
-      stack(fsm::state const & start = 'null'):
-        deque(1)
+      stack(fsm::state<S> const & start = fsm::state<S>::_null):
+        current_event(fsm::event<E>::_init)
       {
-        deque[0] = start;
-        call(deque.back(), 'init');
+        deque.push_back(start);
+        call(deque.back(), fsm::event<E>::_init);
       }
 
-      stack(int start):
-        stack(fsm::state(start))
+      stack(S start):
+        stack(fsm::state<S>(start))
       {}
 
       ~stack()
@@ -115,16 +96,16 @@ namespace fsm {
       }
 
       // pause current state (w/ 'push') and create a new active child (w/ 'init')
-      void push(fsm::state const & state)
+      void push(fsm::state<S> const & state)
       {
         if (deque.size() && deque.back() == state)
         {
           return;
         }
         // queue
-        call(deque.back(), 'push');
+        call(deque.back(), fsm::event<E>::_push);
         deque.push_back(state);
-        call(deque.back(), 'init');
+        call(deque.back(), fsm::event<E>::_init);
       }
 
       // terminate current state and return to parent (if any)
@@ -132,17 +113,17 @@ namespace fsm {
       {
         if (deque.size())
         {
-          call(deque.back(), 'quit');
+          call(deque.back(), fsm::event<E>::_quit);
           deque.pop_back();
         }
         if (deque.size())
         {
-          call(deque.back(), 'back');
+          call(deque.back(), fsm::event<E>::_back);
         }
       }
 
       // set current active state
-      bool set(fsm::state const & state)
+      bool set(fsm::state<S> const & state)
       {
         if (deque.size())
         {
@@ -165,76 +146,80 @@ namespace fsm {
       // info
       // [] classic behaviour: "hello"[5] = undefined, "hello"[-1] = undefined
       // [] extended behaviour: "hello"[5] = h, "hello"[-1] = o, "hello"[-2] = l
-      fsm::state get_state(signed pos = -1) const
+      S get_state(signed pos = -1) const
       {
         signed size = (signed)(deque.size());
-        return size ? *(deque.begin() + (pos >= 0 ? pos % size : size - 1 + ((pos+1) % size))) : fsm::state();
+        return size ?
+          (deque.begin() + (pos >= 0 ? pos % size : size - 1 + ((pos + 1) % size)))->value :
+          fsm::state<S>::_null.value;
       }
 
-      fsm::transition get_log(signed pos = -1) const
+      fsm::transition<S, E> get_log(signed pos = -1) const
       {
         signed size = (signed)(log.size());
-        return size ? *(log.begin() + (pos >= 0 ? pos % size : size - 1 + ((pos+1) % size))) : fsm::transition();
+        return size ? *(log.begin() + (pos >= 0 ? pos % size : size - 1 + ((pos+1) % size))) : fsm::transition<S, E>();
       }
 
       std::string get_trigger() const
       {
         std::stringstream ss;
-        return ss << current_trigger, ss.str();
+        return ss << current_event, ss.str();
       }
 
-      bool is_state(fsm::state const & state) const
+      bool is_state(fsm::state<S> const & state) const
       {
         return deque.empty() ? false : (deque.back() == state);
       }
 
-      /* (idle)___(trigger)__/''(hold)''''(release)''\__
+      /* (idle)___(event)__/''(hold)''''(release)''\__
       bool is_idle()      const { return transition.previous == transition.current; }
       bool is_triggered() const { return transition.previous == transition.current; }
       bool is_hold()      const { return transition.previous == transition.current; }
       bool is_released()  const { return transition.previous == transition.current; } */
 
       // setup
-      fsm::transit & on(fsm::state const & from, fsm::state const & to)
+      fsm::transit & on(fsm::state<S> const & from, fsm::event<E> const & event)
       {
-        return transits[bistate(from, to)];
+        return transits[bistate(from, event)];
       }
 
       // generic call
-      bool call(const fsm::state &from, const fsm::state &to) const
+      bool call(fsm::state<S> const & from, fsm::event<E> const & event) const
       {
-        std::map<bistate, fsm::transit>::const_iterator found = transits.find(bistate(from, to));
+        auto found = transits.find(std::make_pair(from, event));
+        auto current = from;
 
         if (found != transits.end())
         {
-          log.push_back({from, current_trigger, to});
+          bool ret = found->second(event.cb);
 
+          log.push_back({current, get_state(), event});
           if (log.size() > 50)
           {
             log.pop_front();
           }
-          return found->second(to.cb);
+
+          return ret;
         }
         return false;
       }
 
       // user commands
-      bool command(fsm::state const & trigger)
+      bool command(fsm::event<E> const & event)
       {
-        size_t size = this->size();
-        if (!size)
+        if (!size())
         {
           return false;
         }
 
-        current_trigger = fsm::state();
-        std::deque<states::reverse_iterator> aborted;
+        current_event = fsm::event<E>::_init;
+        std::deque<typename std::deque<fsm::state<S>>::reverse_iterator> aborted;
 
         for (auto it = deque.rbegin(); it != deque.rend(); ++it)
         {
-          fsm::state &self = *it;
+          fsm::state<S> & self = *it;
 
-          if (!call(self,trigger))
+          if (!call(self, event))
           {
             aborted.push_back(it);
             continue;
@@ -242,79 +227,99 @@ namespace fsm {
 
           for (auto it = aborted.begin(), end = aborted.end(); it != end; ++it)
           {
-            call(**it, 'quit');
+            call(**it, fsm::event<E>::_quit);
             deque.erase(--(it->base()));
           }
 
-          current_trigger = trigger;
+          current_event = event;
           return true;
         }
         return false;
       }
 
-      bool command(fsm::state const & trigger, fsm::callback cb)
+      bool command(fsm::event<E> const & event, fsm::callback cb)
       {
-        return command(trigger(cb));
+        return command(event(cb));
+      }
+
+      // aliases
+      bool operator()(fsm::event<E> const & event, fsm::callback cb = nullptr)
+      {
+        return command(event, cb);
       }
 
       // debug
       template<typename ostream>
-      ostream & debug(ostream & out) const
+      ostream & debug(ostream & os) const
       {
         int total = log.size();
+
+        os << "status" << std::endl << "{" << std::endl;
         std::string sep = "\t";
 
-        out << "status {" << std::endl;
-
-        for (states::const_reverse_iterator it = deque.rbegin(), end = deque.rend(); it != end; ++it)
+        for (auto it = deque.rbegin(), end = deque.rend(); it != end; ++it)
         {
-          out << sep << *it;
+          os << sep << *it;
           sep = " -> ";
         }
-        out << std::endl;
+        os << std::endl << "}" << std::endl;
 
-        out << "} log (" << total << " entries) {" << std::endl;
-
-        for (int i = 0 ; i < total; ++i)
+        os << "log (" << total << " entries)" << std::endl << "{" << std::endl;
+        for (auto & i : log)
         {
-          out << "\t" << log[i] << std::endl;
+          os << "\t" << i << std::endl;
         }
-        out << "}" << std::endl;
-        return out;
-      }
-
-      // aliases
-      bool operator()(fsm::state const & trigger, fsm::callback cb)
-      {
-        return command(trigger, cb);
+        os << "}";
+        return os;
       }
 
     protected:
-      void replace(fsm::state & current, fsm::state const & next)
+      void replace(fsm::state<S> & current, fsm::state<S> const & next)
       {
-        call(current, 'quit');
+        call(current, fsm::event<E>::_quit);
         current = next;
-        call(current, 'init');
+        call(current, fsm::event<E>::_init);
       }
 
-      typedef std::pair<int, int> bistate;
+      typedef std::pair<fsm::state<S>, fsm::event<E>> bistate;
       std::map<bistate, fsm::transit> transits;
+      std::deque<fsm::state<S>> deque;
+      fsm::event<E> current_event;
 
-      mutable std::deque<fsm::transition> log;
-      std::deque<fsm::state> deque;
-      fsm::state current_trigger;
-
-      typedef std::deque<fsm::state> states;
+      mutable std::deque<fsm::transition<S, E>> log;
   };
 
-  template<typename ostream>
-  inline ostream & operator<<(ostream & out, stack const & t)
+  template <typename ostream, typename T>
+  inline ostream & operator<<(ostream & os, node<T> const n)
   {
-    return t.debug(out), out;
+    if (n == node<T>::_null)
+      return os << "_null", os;
+    else if (n == node<T>::_init)
+      return os << "_init", os;
+    else if (n == node<T>::_push)
+      return os << "_push", os;
+    else if (n == node<T>::_back)
+      return os << "_back", os;
+    else if (n == node<T>::_quit)
+      return os << "_quit", os;
+    else
+      return os << n.value, os;
   }
 
-}; /** !fsm  */
-}; /** !utils  */
+  template <typename ostream, typename S, typename E>
+  inline ostream & operator<<(ostream & os, transition<S, E> const t)
+  {
+    return os << t.from << " --(" << t.event << ")--> " << t.to, os;
+  }
 
-#endif /** !FSM_HH_  */
+  template<typename ostream, typename S, typename E>
+  inline ostream & operator<<(ostream & os, stack<S, E> const & s)
+  {
+      return s.debug(os), os;
+  }
+
+} /** !fsm  */
+} /** !utils  */
+
+#endif /** !UTILS_FSM_HH_  */
 
