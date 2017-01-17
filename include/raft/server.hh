@@ -34,15 +34,15 @@ class server
   public:
     auto is_follower() const
     {
-      return _fsm.state() == raft::fsm::state::follower;
+      return _fsm.state() == raft::state::follower;
     }
     auto is_candidate() const
     {
-      return _fsm.state() == raft::fsm::state::candidate;
+      return _fsm.state() == raft::state::candidate;
     }
     auto is_leader() const
     {
-      return _fsm.state() == raft::fsm::state::leader;
+      return _fsm.state() == raft::state::leader;
     }
 
   public:
@@ -98,20 +98,14 @@ class server
     {
       std::cout << "start election on " << _me->id() << std::endl;
 
-      return _fsm(raft::fsm::event::election, [&]()
+      return _fsm(raft::event::election, [&]()
       {
         for (auto & i : _nodes)
           i.second->has_vote_for_me(false);
 
         _leader = nullptr;
 
-        raft::rpc::vote_request vreq =
-        {
-          .term = _current_term,
-          .candidate_id = _me->id(),
-          .last_log_idx = 0, // FIXME
-          .last_log_term = 0, // FIXME
-        };
+        raft::rpc::vote_request vreq = { _current_term, _me->id(), 0, /* FIXME */ 0, /* FIXME */ };
 
         for (auto & i : _nodes)
           if (i.second != _me && i.second->is_voting())
@@ -131,7 +125,7 @@ class server
       if (_current_term < vreq.term)
       {
         _current_term = vreq.term;
-        _fsm(raft::fsm::event::high_term, []()
+        _fsm(raft::event::high_term, []()
         {
           std::cout << "Higher term: become follower" << std::endl;
           return true;
@@ -179,8 +173,7 @@ operator<<(ostream & os, server<T> const & server)
   return os;
 }
 
-
-}; /** !raft  */
+} /** !raft  */
 
 #endif /** !RAFT_SERVER_HH_  */
 

@@ -6,59 +6,61 @@
 
 namespace raft {
 
+enum class event
+{
+  election,
+  majority,
+  high_term,
+  new_term,
+  new_leader,
+};
+
+enum class state
+{
+  follower,
+  candidate,
+  leader,
+};
+
 class fsm
 {
   public:
-    enum event
-    {
-      election,
-      majority,
-      high_term,
-      new_term,
-      new_leader,
-    };
-
-    enum state
-    {
-      follower,
-      candidate,
-      leader,
-    };
 
   public:
     fsm()
     {
-      _fsm.set(state::follower);
+      _fsm.set(raft::state::follower);
 
-      _fsm.on(state::follower,   event::election)    = [&](utils::fsm::callback cb) { return transit(cb, state::candidate);  };
-      _fsm.on(state::candidate,  event::election)    = [&](utils::fsm::callback cb) { return transit(cb, state::candidate);  };
-      _fsm.on(state::candidate,  event::majority)    = [&](utils::fsm::callback cb) { return transit(cb, state::leader);     };
-      _fsm.on(state::candidate,  event::new_leader)  = [&](utils::fsm::callback cb) { return transit(cb, state::follower);   };
-      _fsm.on(state::candidate,  event::new_term)    = [&](utils::fsm::callback cb) { return transit(cb, state::follower);   };
-      _fsm.on(state::leader,     event::high_term)   = [&](utils::fsm::callback cb) { return transit(cb, state::follower);   };
+      _fsm.on(raft::state::follower,   raft::event::election)    = [&](utils::fsm::callback cb) { return transit(cb, raft::state::candidate);  };
+      _fsm.on(raft::state::candidate,  raft::event::election)    = [&](utils::fsm::callback cb) { return transit(cb, raft::state::candidate);  };
+      _fsm.on(raft::state::candidate,  raft::event::majority)    = [&](utils::fsm::callback cb) { return transit(cb, raft::state::leader);     };
+      _fsm.on(raft::state::candidate,  raft::event::new_leader)  = [&](utils::fsm::callback cb) { return transit(cb, raft::state::follower);   };
+      _fsm.on(raft::state::candidate,  raft::event::new_term)    = [&](utils::fsm::callback cb) { return transit(cb, raft::state::follower);   };
+      _fsm.on(raft::state::leader,     raft::event::high_term)   = [&](utils::fsm::callback cb) { return transit(cb, raft::state::follower);   };
     }
 
   public:
-    bool operator()(utils::fsm::state const & trigger, utils::fsm::callback cb)
+    bool operator()(raft::event const & event, utils::fsm::callback cb)
     {
-      return _fsm.command(trigger(cb));
+      return _fsm.command(event, cb);
     }
 
-    int state() const
+    raft::state state() const
     {
       return _fsm.get_state();
     }
 
   private:
-    bool transit(utils::fsm::callback cb, utils::fsm::state state)
+    bool transit(utils::fsm::callback cb, raft::state state)
     {
       return cb() ? _fsm.set(state) : false;
     }
 
   private:
-    utils::fsm::stack _fsm;
+    utils::fsm::stack<raft::state, raft::event> _fsm;
 };
 
-};
+}
+
 #endif /** !RAFT_FSM_HH_  */
 

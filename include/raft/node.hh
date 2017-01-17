@@ -117,7 +117,7 @@ operator<<(ostream & os, node<T> const & node)
   return os;
 }
 
-}; /** !raft  */
+} /** !raft  */
 
 #endif /** !RAFT_NODE_HH_  */
 

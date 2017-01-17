@@ -43,8 +43,8 @@ operator<<(ostream & os, vote_response const & vresp)
   return os;
 }
 
-}; /** !rpc  */
-}; /** !raft  */
+} /** !rpc  */
+} /** !raft  */
 
 #endif /** !RAFT_RPC_HH_  */
 
