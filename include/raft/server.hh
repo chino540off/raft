@@ -3,6 +3,11 @@
 
 # include <map>
 
+# include <utils/logger.hh>
+
+static utils::logger::Logger _log;
+using loglevel = utils::logger::level;
+
 # include <raft/fsm.hh>
 # include <raft/node.hh>
 # include <raft/rpc.hh>
@@ -96,7 +101,7 @@ class server
   public:
     auto election_start(vote_req_callback cb)
     {
-      std::cout << "start election on " << _me->id() << std::endl;
+      _log(loglevel::INFO) << "start election on " << _me->id() << std::endl;
 
       return _fsm(raft::event::election, [&]()
       {
@@ -118,7 +123,7 @@ class server
     auto recv_request_vote(raft::rpc::vote_request const &  vreq,
                            raft::rpc::vote_response &       vresp)
     {
-      std::cout << *this << " receives " << vreq << std::endl;
+      _log(loglevel::INFO) << *this << " receives " << vreq << std::endl;
 
       auto node = get_node(vreq.candidate_id);
 
@@ -127,7 +132,7 @@ class server
         _current_term = vreq.term;
         _fsm(raft::event::high_term, []()
         {
-          std::cout << "Higher term: become follower" << std::endl;
+          _log(loglevel::INFO) << "Higher term: become follower" << std::endl;
           return true;
         });
       }
@@ -151,7 +156,7 @@ class server
 
       vresp.term = _current_term;
 
-      std::cout << *this << " replies " << vresp << std::endl;
+      _log(loglevel::INFO) << *this << " replies " << vresp << std::endl;
     }
 
   private:
