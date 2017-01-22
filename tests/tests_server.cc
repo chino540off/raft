@@ -14,7 +14,7 @@ main()
   {
     std::cout << server << " sends " << vreq << " to " << node << std::endl;
 
-    raft::rpc::vote_response vresp;
+    raft::rpc::vote_response_t vresp;
 
     servers[node.id()].recv_request_vote(vreq, vresp);
   });

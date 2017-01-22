@@ -4,7 +4,7 @@
 namespace raft {
 namespace rpc {
 
-struct vote_request
+struct vote_request_t
 {
   unsigned int term;
   unsigned int candidate_id;
@@ -14,7 +14,7 @@ struct vote_request
 
 template <typename ostream>
 ostream &
-operator<<(ostream & os, vote_request const & vreq)
+operator<<(ostream & os, vote_request_t const & vreq)
 {
   os << "VoteRequest"
     << " (candidate_id: " << vreq.candidate_id
@@ -25,7 +25,7 @@ operator<<(ostream & os, vote_request const & vreq)
   return os;
 }
 
-struct vote_response
+struct vote_response_t
 {
   unsigned int term;
   int vote_granted;
@@ -33,7 +33,7 @@ struct vote_response
 
 template <typename ostream>
 ostream &
-operator<<(ostream & os, vote_response const & vresp)
+operator<<(ostream & os, vote_response_t const & vresp)
 {
   os << "VoteResponse"
     << " (term: " << vresp.term

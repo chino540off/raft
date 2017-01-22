@@ -26,7 +26,7 @@ class server
                                             raft::node<T> const &,
                                             rpc_t const &)>;
 
-    typedef rpc_callback<raft::rpc::vote_request>   vote_req_callback;
+    typedef rpc_callback<raft::rpc::vote_request_t>   vote_req_callback;
 
   public:
     server(unsigned int id):
@@ -84,7 +84,7 @@ class server
     }
 
   private:
-    bool should_grant_vote(raft::rpc::vote_request const & vreq)
+    bool should_grant_vote(raft::rpc::vote_request_t const & vreq)
     {
       if (!_me->is_voting())
         return false;
@@ -110,7 +110,7 @@ class server
 
         _leader = nullptr;
 
-        raft::rpc::vote_request vreq = { _current_term, _me->id(), 0, /* FIXME */ 0, /* FIXME */ };
+        raft::rpc::vote_request_t vreq = { _current_term, _me->id(), 0, /* FIXME */ 0, /* FIXME */ };
 
         for (auto & i : _nodes)
           if (i.second != _me && i.second->is_voting())
@@ -120,8 +120,8 @@ class server
       });
     }
 
-    auto recv_request_vote(raft::rpc::vote_request const &  vreq,
-                           raft::rpc::vote_response &       vresp)
+    auto recv_request_vote(raft::rpc::vote_request_t const & vreq,
+                           raft::rpc::vote_response_t & vresp)
     {
       _log(loglevel::INFO) << *this << " receives " << vreq << std::endl;
 
