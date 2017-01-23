@@ -1,11 +1,12 @@
 #ifndef RAFT_SERVER_HH_
 # define RAFT_SERVER_HH_
 
+# include <cassert>
 # include <map>
 
 # include <utils/logger.hh>
 
-static utils::logger::Logger _log;
+static utils::logger::Logger _log_server;
 using loglevel = utils::logger::level;
 
 # include <raft/fsm.hh>
@@ -50,6 +51,38 @@ class server
       return _fsm.state() == raft::state::leader;
     }
 
+    /**
+     * @brief
+     *
+     * @return
+     */
+    auto is_majority() const
+    {
+      unsigned int votes = 0;
+      unsigned int voting_nodes = 0;
+
+      for (auto & it : _nodes)
+      {
+        auto node = it.second;
+
+        if (node == _me)
+          continue;
+
+        if (node->is_voting())
+        {
+          ++voting_nodes;
+          if (node->has_vote_for_me())
+          {
+            ++votes;
+          }
+        }
+      }
+
+      _log_server(loglevel::DEBUG) << votes << "/" << voting_nodes << " votes" << std::endl;
+
+      return ((voting_nodes / 2) + 1) <= votes;
+    }
+
   public:
     auto id() const
     {
@@ -57,6 +90,34 @@ class server
     }
 
   public:
+    /**
+     * @brief
+     *
+     * @tparam ostream
+     * @param os
+     *
+     * @return
+     */
+    template <typename ostream>
+    ostream & print(ostream & os) const
+    {
+      os << "Server(id: " << id()
+         << ", term: " << _current_term
+         << ", state: " << _fsm.state()
+         <<  ")";
+      return os;
+    }
+
+
+  public:
+    /**
+     * @brief
+     *
+     * @param id
+     * @param voting
+     *
+     * @return
+     */
     auto add_node(unsigned int id, bool voting = true)
     {
       auto node = std::make_shared<raft::node<T>>(id);
@@ -68,6 +129,13 @@ class server
       return node;
     }
 
+    /**
+     * @brief
+     *
+     * @param id
+     *
+     * @return
+     */
     auto get_node(unsigned int id)
     {
       auto it = _nodes.find(id);
@@ -75,6 +143,13 @@ class server
       return it->second;
     }
 
+    /**
+     * @brief
+     *
+     * @param id
+     *
+     * @return
+     */
     auto remove_node(unsigned int id)
     {
       auto it = _nodes.find(id);
@@ -84,6 +159,13 @@ class server
     }
 
   private:
+    /**
+     * @brief
+     *
+     * @param vreq
+     *
+     * @return
+     */
     bool should_grant_vote(raft::rpc::vote_request_t const & vreq)
     {
       if (!_me->is_voting())
@@ -99,11 +181,18 @@ class server
     }
 
   public:
+    /**
+     * @brief
+     *
+     * @param cb
+     *
+     * @return
+     */
     auto election_start(vote_req_callback cb)
     {
-      _log(loglevel::INFO) << "start election on " << _me->id() << std::endl;
+      _log_server(loglevel::INFO) << "start election on " << _me->id() << std::endl;
 
-      return _fsm(raft::event::election, [&]()
+      auto ret = _fsm(raft::event::election, [&]()
       {
         for (auto & i : _nodes)
           i.second->has_vote_for_me(false);
@@ -118,12 +207,23 @@ class server
 
         return true;
       });
+
+      assert(_fsm.state() == raft::state::candidate);
+      return ret;
     }
 
-    auto recv_request_vote(raft::rpc::vote_request_t const & vreq,
+    /**
+     * @brief
+     *
+     * @param vreq
+     * @param vresp
+     *
+     * @return
+     */
+    auto recv_vote_request(raft::rpc::vote_request_t const & vreq,
                            raft::rpc::vote_response_t & vresp)
     {
-      _log(loglevel::INFO) << *this << " receives " << vreq << std::endl;
+      _log_server(loglevel::INFO) << *this << " receives " << vreq << std::endl;
 
       auto node = get_node(vreq.candidate_id);
 
@@ -132,7 +232,7 @@ class server
         _current_term = vreq.term;
         _fsm(raft::event::high_term, []()
         {
-          _log(loglevel::INFO) << "Higher term: become follower" << std::endl;
+          _log_server(loglevel::INFO) << "Higher term: become follower" << std::endl;
           return true;
         });
       }
@@ -156,7 +256,55 @@ class server
 
       vresp.term = _current_term;
 
-      _log(loglevel::INFO) << *this << " replies " << vresp << std::endl;
+      _log_server(loglevel::INFO) << *this << " replies " << vresp << std::endl;
+    }
+
+    /**
+     * @brief
+     *
+     * @param vresp
+     * @param from
+     *
+     * @return
+     */
+    auto recv_vote_response(raft::rpc::vote_response_t const & vresp, unsigned int from)
+    {
+      _log_server(loglevel::INFO) << *this << " receives " << vresp << std::endl;
+
+      if (!is_candidate())
+      {
+        _log_server(loglevel::DEBUG) << *this << " is not candidate" << std::endl;
+        return;
+      }
+      else if (_current_term < vresp.term)
+      {
+        _current_term = vresp.term;
+        _fsm(raft::event::high_term, []()
+        {
+          _log_server(loglevel::INFO) << "Higher term: become follower" << std::endl;
+          return true;
+        });
+      }
+      else if (_current_term != vresp.term)
+      {
+        return;
+      }
+
+      switch (vresp.vote_granted)
+      {
+        case 1:
+          auto node = get_node(from);
+          if (node)
+            node->has_vote_for_me(true);
+
+          if (is_majority())
+            _fsm(raft::event::majority, []()
+            {
+              _log_server(loglevel::INFO) << "Majority: become leader" << std::endl;
+              return true;
+            });
+          break;
+      }
     }
 
   private:
@@ -174,8 +322,7 @@ template <typename ostream, typename T>
 ostream &
 operator<<(ostream & os, server<T> const & server)
 {
-  os << "Server(" << server.id() << ")";
-  return os;
+  return server.print(os);
 }
 
 } /** !raft  */
