@@ -1,8 +1,14 @@
 #ifndef RAFT_FSM_HH_
 # define RAFT_FSM_HH_
 
-# include <utils/fsm.hh>
+# include <cassert>
 # include <iostream>
+
+# include <utils/fsm.hh>
+# include <utils/logger.hh>
+
+static utils::logger::Logger _log_fsm;
+using loglevel = utils::logger::level;
 
 namespace raft {
 
@@ -15,12 +21,42 @@ enum class event
   new_leader,
 };
 
+template <typename ostream>
+ostream &
+operator<<(ostream & os, event const & e)
+{
+  switch (e)
+  {
+    case event::election: os << "election"; break;
+    case event::majority: os << "majority"; break;
+    case event::high_term: os << "high term"; break;
+    case event::new_term: os << "new term"; break;
+    case event::new_leader: os << "new leader"; break;
+    default: assert(false);
+  }
+  return os;
+}
+
 enum class state
 {
   follower,
   candidate,
   leader,
 };
+
+template <typename ostream>
+ostream &
+operator<<(ostream & os, state const & s)
+{
+  switch (s)
+  {
+    case state::follower: os << "follower"; break;
+    case state::candidate: os << "candidate"; break;
+    case state::leader: os << "leader"; break;
+    default: assert(false);
+  }
+  return os;
+}
 
 class fsm
 {
