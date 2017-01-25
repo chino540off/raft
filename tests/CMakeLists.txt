@@ -20,6 +20,6 @@ ADD_EXECUTABLE(raft-tests-store tests_store.cc)
 TARGET_LINK_LIBRARIES(raft-tests-store stdc++fs)
 ADD_TEST(raft-tests-store ${CMAKE_BINARY_DIR}/tests/raft-tests-store)
 
-ADD_EXECUTABLE(raft-tests-server tests_server.cc)
-ADD_TEST(raft-tests-server ${CMAKE_BINARY_DIR}/tests/raft-tests-server)
+ADD_EXECUTABLE(raft-tests-election tests_election.cc)
+ADD_TEST(raft-tests-election ${CMAKE_BINARY_DIR}/tests/raft-tests-election)
 
