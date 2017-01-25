@@ -118,8 +118,8 @@ class filesystem
     fs::path _base_path;
 };
 
-}; /** !store  */
-}; /** !raft  */
+} /** !store  */
+} /** !raft  */
 
 #endif /** !FS_HH_  */
 

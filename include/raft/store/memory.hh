@@ -43,8 +43,8 @@ class memory
     std::map<Key, Value> _map;
 };
 
-}; /** !store  */
-}; /** !raft  */
+} /** !store  */
+} /** !raft  */
 
 #endif /** !STORE_HH_  */
 
