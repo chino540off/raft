@@ -1,0 +1,43 @@
+language: cpp
+
+matrix:
+  include:
+  - os: linux
+    compiler: gcc
+    addons:
+      apt:
+        sources: ['ubuntu-toolchain-r-test']
+        packages: ['g++-6']
+    env: COMPILER=g++-6
+  - os: linux
+    compiler: clang
+    addons:
+      apt:
+        sources: ['ubuntu-toolchain-r-test', 'llvm-toolchain-precise-3.8']
+        packages: ['clang-3.8']
+    env: COMPILER=clang++-3.8
+  - os: osx
+    osx_image: xcode7.3
+    compiler: clang
+    env: COMPILER=clang++
+
+env:
+  global:
+    secure: trHARmAXjGAmjr0IXBp6CkPdGbialuiqfTfFwW4PaIz5hMcTZyNhvrrDk1glpSfvac2dkFQqTVr4v4U4OxTWTrrvMtFd/2CvEnGUqpjkJTvR1MSC26KUnI4TvBgNpcgAjgy3cegJM91y8ZGoNQxpiCPh1rjbhOlHDk9DYKfHy0ga8GHEnvuZQKHcgpRzGEVnHnHqBhqa+sJeI/9FB3hWpStFz+VEnpVwCZppnfmzc/VKambl6PCk2qJNhLpXp0ousXo/QIoP8EC35+IRwDoSniZoHfE2utt2WFlhGsrXBUY3bw3OSskndvsbftbEJ9jGFWfLaDtb6XnYAUs7cpGVo09yzBPJbMEJ9bmMEL81BW21Wzi8DbAmt7ueqjEuWWFWPST/iDY6q0V1kUINtt92WLwaFQ3x5HsYE20K44F22IqQsg+pCNNzZ89J8fKKZV3ZpC5iL6ED9HQ+sR/XHwAktGqybPXupQRmss/h+N4sm55iYaCczRRK1rcwgap5pCae3k4JB/9cq/QNTurPPe79drVAZrxa30AHFnZT2YOAVqW71CLLzbcuIi1XLl9stADNYpxNnuUBmXIVL8VBE6QFxvObB9p0KtJK4ASy7BknMnhDeaQzqS8dPyB0Hh/Wbxk4oKP0NJhro3pKVfna1qv6WGhtDEo6aEVPB8CZXItwPZs=
+
+install:
+  - pip install --user cpp-coveralls
+
+before_script:
+  - export CXX=${COMPILER}
+  - ${CXX} --version
+  - ./build.sh build
+
+script:
+  - ./build.sh test
+
+after_success:
+  - '[[ "$COMPILER" != clang++     ]] || export GCOV=llvm-cov gcov'
+  - '[[ "$COMPILER" != clang++-3.8 ]] || export GCOV=llvm-cov-3.8 gcov'
+  - '[[ "$COMPILER" != g++-6       ]] || export GCOV=gcov-6'
+  - coveralls -i include -i tests --gcov $GCOV
