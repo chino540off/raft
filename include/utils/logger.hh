@@ -10,12 +10,12 @@
 namespace utils {
 namespace logger {
 
-enum class level
+enum level
 {
-  DEBUG,
-  INFO,
-  WARN,
-  ERROR,
+  ERROR = 1,
+  WARN = 2,
+  INFO = 3,
+  DEBUG = 4,
 };
 
 template <typename ostream>
@@ -23,10 +23,10 @@ ostream & operator<<(ostream & os, level const & l)
 {
   switch (l)
   {
-    case level::DEBUG: os << "DEBUG"; break;
-    case level::INFO:  os << "INFO";  break;
-    case level::WARN:  os << "WARN";  break;
-    case level::ERROR: os << "ERROR"; break;
+    case DEBUG: os << "DEBUG"; break;
+    case INFO:  os << " INFO"; break;
+    case WARN:  os << " WARN"; break;
+    case ERROR: os << "ERROR"; break;
   }
 
   return os;
@@ -35,26 +35,29 @@ ostream & operator<<(ostream & os, level const & l)
 class Logger
 {
   public:
+    Logger(): _level(level::DEBUG) { }
+
+  private:
     template <typename T>
-    Logger & operator<<(T const & v)
+    void _print(T const & e)
     {
-      std::cout << v;
-      return *this;
+      std::cout << e;
     }
 
-    Logger & operator<<(std::ostream& (*os)(std::ostream&))
+    template <typename T, typename ...Args>
+    void _print(T const & e, Args const & ...args)
     {
-      std::cout << os;
-      return *this;
+      std::cout << e << " ";
+      _print(args...);
     }
 
-    Logger & operator()(level const & l)
+  public:
+    template <typename T, typename ...Args>
+    void operator()(level l, T const & e, Args const & ...args)
     {
-      auto t = std::time(nullptr);
-      auto tm = *std::localtime(&t);
-
-      std::cout << "[" << l << "][" << std::put_time(&tm, "%d-%m-%Y %H-%M-%S") << "] ";
-      return *this;
+      std::cout << "[" << l << "]: ";
+      _print(e, args...);
+      std::cout << std::endl;
     }
 
   private:
