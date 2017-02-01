@@ -16,12 +16,18 @@ operator<<(ostream & os, coord const & c)
 int main(void)
 {
   coord c = { 1.2, 3.4 };
-  utils::logger::Logger log;
+  utils::logger::Logger log1;
 
-  log(utils::logger::DEBUG, "coucou:", 1, "coord:", c);
-  log(utils::logger::INFO,  "coucou:", 1, "coord:", c);
-  log(utils::logger::WARN,  "coucou:", 1, "coord:", c);
-  log(utils::logger::ERROR, "coucou:", 1, "coord:", c);
+  DEBUG(log1, "coucou: ", 1, " coord: ", c);
+  INFO(log1,  "coucou: ", 1, " coord: ", c);
+  WARN(log1,  "coucou: ", 1, " coord: ", c);
+  ERROR(log1, "coucou: ", 1, " coord: ", c);
+
+  utils::logger::FileLogger log2("file.txt");
+  DEBUG(log2, "coucou: ", 1, " coord: ", c);
+  INFO(log2,  "coucou: ", 1, " coord: ", c);
+  WARN(log2,  "coucou: ", 1, " coord: ", c);
+  ERROR(log2, "coucou: ", 1, " coord: ", c);
 
   return 0;
 }
