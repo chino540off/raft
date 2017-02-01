@@ -25,4 +25,13 @@ main()
   servers[2].recv_vote_request(vreqs[0], vresps[2]);
   servers[0].recv_vote_response(vresps[2], 2);
   assert(servers[0].is_leader());
+
+  servers[1].election_start([&vreqs](auto , auto , auto vreq) { vreqs[1] = vreq; });
+  assert(servers[1].is_candidate());
+
+  servers[0].recv_vote_request(vreqs[1], vresps[0]);
+  servers[1].recv_vote_response(vresps[0], 0);
+
+  servers[2].recv_vote_request(vreqs[1], vresps[2]);
+  servers[1].recv_vote_response(vresps[2], 2);
 }

@@ -6,7 +6,6 @@
 
 # include <utils/logger.hh>
 
-static utils::logger::Logger _log_server;
 using loglevel = utils::logger::level;
 
 # include <raft/fsm.hh>
@@ -78,9 +77,19 @@ class server
         }
       }
 
-      _log_server(loglevel::DEBUG) << votes << "/" << voting_nodes << " votes" << std::endl;
+      _log(loglevel::DEBUG, votes, "/", voting_nodes, "votes");
 
       return ((voting_nodes / 2) + 1) <= votes;
+    }
+
+    auto already_vote() const
+    {
+      return _vote_for != nullptr;
+    }
+
+    auto vote_for(node_t node)
+    {
+      _vote_for = node;
     }
 
   public:
@@ -174,7 +183,9 @@ class server
       if (vreq.term < _current_term)
         return false;
 
-      // FIXME: check if already voted
+      if (already_vote())
+        return false;
+
       // FIXME: check logs indexes
 
       return true;
@@ -190,16 +201,23 @@ class server
      */
     auto election_start(vote_req_callback cb)
     {
-      _log_server(loglevel::INFO) << "start election on " << _me->id() << std::endl;
+      _log(loglevel::DEBUG, "start election on ", _me->id());
 
       auto ret = _fsm(raft::event::election, [&]()
       {
         for (auto & i : _nodes)
           i.second->has_vote_for_me(false);
 
+        vote_for(_me);
+
         _leader = nullptr;
 
-        raft::rpc::vote_request_t vreq = { _current_term, _me->id(), 0, /* FIXME */ 0, /* FIXME */ };
+        raft::rpc::vote_request_t vreq = {
+          _current_term,
+          _me->id(),
+          0 /* FIXME */,
+          0 /* FIXME */,
+        };
 
         for (auto & i : _nodes)
           if (i.second != _me && i.second->is_voting())
@@ -223,40 +241,34 @@ class server
     auto recv_vote_request(raft::rpc::vote_request_t const & vreq,
                            raft::rpc::vote_response_t & vresp)
     {
-      _log_server(loglevel::INFO) << *this << " receives " << vreq << std::endl;
+      _log(loglevel::INFO, *this, " receives ", vreq);
 
       auto node = get_node(vreq.candidate_id);
 
       if (_current_term < vreq.term)
       {
         _current_term = vreq.term;
-        _fsm(raft::event::high_term, []()
+        _fsm(raft::event::high_term, [this]()
         {
-          _log_server(loglevel::INFO) << "Higher term: become follower" << std::endl;
+          _log(loglevel::INFO, "Higher term: become follower");
           return true;
         });
       }
 
       if (should_grant_vote(vreq))
       {
-        vresp.vote_granted = 1;
-        // FIXME: vote for vreq.candidate_id
+        vresp.vote = rpc::vote_t::granted;
+        _leader = nullptr;
+        _vote_for = node;
       }
       else
       {
-        if (node == nullptr)
-        {
-          vresp.vote_granted = -1;
-        }
-        else
-        {
-          vresp.vote_granted = 0;
-        }
+        vresp.vote = (node != nullptr) ? rpc::vote_t::not_granted : rpc::vote_t::error;
       }
 
       vresp.term = _current_term;
 
-      _log_server(loglevel::INFO) << *this << " replies " << vresp << std::endl;
+      _log(loglevel::INFO, *this, " replies ", vresp);
     }
 
     /**
@@ -269,19 +281,19 @@ class server
      */
     auto recv_vote_response(raft::rpc::vote_response_t const & vresp, unsigned int from)
     {
-      _log_server(loglevel::INFO) << *this << " receives " << vresp << std::endl;
+      _log(loglevel::INFO, *this, "receives", vresp);
 
       if (!is_candidate())
       {
-        _log_server(loglevel::DEBUG) << *this << " is not candidate" << std::endl;
+        DEBUG(_log, *this, "is not candidate");
         return;
       }
       else if (_current_term < vresp.term)
       {
         _current_term = vresp.term;
-        _fsm(raft::event::high_term, []()
+        _fsm(raft::event::high_term, [this]()
         {
-          _log_server(loglevel::INFO) << "Higher term: become follower" << std::endl;
+          _log(loglevel::INFO, "Higher term: become follower");
           return true;
         });
       }
@@ -290,19 +302,25 @@ class server
         return;
       }
 
-      switch (vresp.vote_granted)
+      switch (vresp.vote)
       {
-        case 1:
+        case rpc::vote_t::granted:
+        {
           auto node = get_node(from);
           if (node)
             node->has_vote_for_me(true);
 
           if (is_majority())
-            _fsm(raft::event::majority, []()
+            _fsm(raft::event::majority, [this]()
             {
-              _log_server(loglevel::INFO) << "Majority: become leader" << std::endl;
+              _log(loglevel::INFO, "Majority: become leader");
               return true;
             });
+          break;
+        }
+
+        case rpc::vote_t::not_granted:
+        case rpc::vote_t::error:
           break;
       }
     }
@@ -316,6 +334,7 @@ class server
     node_t _me;
     unsigned int _current_term;
 
+    mutable utils::logger::Logger _log;
 };
 
 template <typename ostream, typename T>

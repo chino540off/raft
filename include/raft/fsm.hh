@@ -7,9 +7,6 @@
 # include <utils/fsm.hh>
 # include <utils/logger.hh>
 
-static utils::logger::Logger _log_fsm;
-using loglevel = utils::logger::level;
-
 namespace raft {
 
 enum class event
@@ -60,7 +57,8 @@ operator<<(ostream & os, state const & s)
 
 class fsm
 {
-  public:
+  private:
+    using loglevel = utils::logger::level;
 
   public:
     fsm()
@@ -89,11 +87,13 @@ class fsm
   private:
     bool transit(utils::fsm::callback cb, raft::state state)
     {
+      _log(loglevel::DEBUG, "Try to go to", state);
       return cb() ? _fsm.set(state) : false;
     }
 
   private:
     utils::fsm::stack<raft::state, raft::event> _fsm;
+    utils::logger::Logger _log;
 };
 
 }

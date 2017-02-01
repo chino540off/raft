@@ -25,10 +25,30 @@ operator<<(ostream & os, vote_request_t const & vreq)
   return os;
 }
 
+enum class vote_t
+{
+  error = -1,
+  not_granted = 0,
+  granted = 1,
+};
+
+template <typename ostream>
+ostream &
+operator<<(ostream & os, vote_t const & vote)
+{
+  switch (vote)
+  {
+    case vote_t::not_granted: os << "not granted"; break;
+    case vote_t::granted:     os << "granted"; break;
+    default:                  os << "error"; break;
+  }
+  return os;
+}
+
 struct vote_response_t
 {
   unsigned int term;
-  int vote_granted;
+  vote_t vote;
 };
 
 template <typename ostream>
@@ -37,8 +57,7 @@ operator<<(ostream & os, vote_response_t const & vresp)
 {
   os << "VoteResponse"
     << " (term: " << vresp.term
-    << ", vote: " << ((vresp.vote_granted == 1) ? "granted" :
-                     (vresp.vote_granted == 0) ? "not granted" : "unknown")
+    << ", vote: " << vresp.vote
     << ")";
   return os;
 }
