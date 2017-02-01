@@ -1,8 +1,8 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 PROJECT(raft-tests)
 
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -W -Wall -Wextra -pedantic -pthread -std=c++1z -Wl,--no-as-needed")
-set(CMAKE_CXX_FLAGS_DEBUG "-O0 -ggdb -fprofile-arcs -ftest-coverage")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -W -Wall -Wextra -Wno-multichar -pedantic -pthread -std=c++1z")
+set(CMAKE_CXX_FLAGS_DEBUG " -O0 -ggdb -fprofile-arcs -ftest-coverage")
 SET(CMAKE_BUILD_TYPE Debug)
 
 INCLUDE_DIRECTORIES(
