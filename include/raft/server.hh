@@ -77,7 +77,7 @@ class server
         }
       }
 
-      _log(loglevel::DEBUG, votes, "/", voting_nodes, "votes");
+      DEBUG(_logger, votes, "/", voting_nodes, "votes");
 
       return ((voting_nodes / 2) + 1) <= votes;
     }
@@ -201,7 +201,7 @@ class server
      */
     auto election_start(vote_req_callback cb)
     {
-      _log(loglevel::DEBUG, "start election on ", _me->id());
+      DEBUG(_logger, "start election on ", _me->id());
 
       auto ret = _fsm(raft::event::election, [&]()
       {
@@ -241,7 +241,7 @@ class server
     auto recv_vote_request(raft::rpc::vote_request_t const & vreq,
                            raft::rpc::vote_response_t & vresp)
     {
-      _log(loglevel::INFO, *this, " receives ", vreq);
+      INFO(_logger, *this, " receives ", vreq);
 
       auto node = get_node(vreq.candidate_id);
 
@@ -250,7 +250,7 @@ class server
         _current_term = vreq.term;
         _fsm(raft::event::high_term, [this]()
         {
-          _log(loglevel::INFO, "Higher term: become follower");
+          INFO(_logger, "Higher term: become follower");
           return true;
         });
       }
@@ -268,7 +268,7 @@ class server
 
       vresp.term = _current_term;
 
-      _log(loglevel::INFO, *this, " replies ", vresp);
+      INFO(_logger, *this, " replies ", vresp);
     }
 
     /**
@@ -281,11 +281,11 @@ class server
      */
     auto recv_vote_response(raft::rpc::vote_response_t const & vresp, unsigned int from)
     {
-      _log(loglevel::INFO, *this, "receives", vresp);
+      INFO(_logger, *this, "receives", vresp);
 
       if (!is_candidate())
       {
-        DEBUG(_log, *this, "is not candidate");
+        DEBUG(_logger, *this, "is not candidate");
         return;
       }
       else if (_current_term < vresp.term)
@@ -293,7 +293,7 @@ class server
         _current_term = vresp.term;
         _fsm(raft::event::high_term, [this]()
         {
-          _log(loglevel::INFO, "Higher term: become follower");
+          INFO(_logger, "Higher term: become follower");
           return true;
         });
       }
@@ -313,7 +313,7 @@ class server
           if (is_majority())
             _fsm(raft::event::majority, [this]()
             {
-              _log(loglevel::INFO, "Majority: become leader");
+              INFO(_logger, "Majority: become leader");
               return true;
             });
           break;
@@ -334,7 +334,7 @@ class server
     node_t _me;
     unsigned int _current_term;
 
-    mutable utils::logger::Logger _log;
+    mutable utils::logger::Logger _logger;
 };
 
 template <typename ostream, typename T>

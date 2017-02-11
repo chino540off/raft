@@ -65,12 +65,30 @@ class fsm
     {
       _fsm.set(raft::state::follower);
 
-      _fsm.on(raft::state::follower,   raft::event::election)    = [&](utils::fsm::callback cb) { return transit(cb, raft::state::candidate);  };
-      _fsm.on(raft::state::candidate,  raft::event::election)    = [&](utils::fsm::callback cb) { return transit(cb, raft::state::candidate);  };
-      _fsm.on(raft::state::candidate,  raft::event::majority)    = [&](utils::fsm::callback cb) { return transit(cb, raft::state::leader);     };
-      _fsm.on(raft::state::candidate,  raft::event::new_leader)  = [&](utils::fsm::callback cb) { return transit(cb, raft::state::follower);   };
-      _fsm.on(raft::state::candidate,  raft::event::new_term)    = [&](utils::fsm::callback cb) { return transit(cb, raft::state::follower);   };
-      _fsm.on(raft::state::leader,     raft::event::high_term)   = [&](utils::fsm::callback cb) { return transit(cb, raft::state::follower);   };
+      _fsm.on(raft::state::follower,   raft::event::election)    = [&](utils::fsm::callback cb)
+      {
+        return transit(cb, raft::state::candidate);
+      };
+      _fsm.on(raft::state::candidate,  raft::event::election)    = [&](utils::fsm::callback cb)
+      {
+        return transit(cb, raft::state::candidate);
+      };
+      _fsm.on(raft::state::candidate,  raft::event::majority)    = [&](utils::fsm::callback cb)
+      {
+        return transit(cb, raft::state::leader);
+      };
+      _fsm.on(raft::state::candidate,  raft::event::new_leader)  = [&](utils::fsm::callback cb)
+      {
+        return transit(cb, raft::state::follower);
+      };
+      _fsm.on(raft::state::candidate,  raft::event::new_term)    = [&](utils::fsm::callback cb)
+      {
+        return transit(cb, raft::state::follower);
+      };
+      _fsm.on(raft::state::leader,     raft::event::high_term)   = [&](utils::fsm::callback cb)
+      {
+        return transit(cb, raft::state::follower);
+      };
     }
 
   public:
@@ -87,13 +105,14 @@ class fsm
   private:
     bool transit(utils::fsm::callback cb, raft::state state)
     {
-      _log(loglevel::DEBUG, "Try to go to", state);
+      DEBUG(_logger, "Try to go to", state);
       return cb() ? _fsm.set(state) : false;
     }
 
   private:
     utils::fsm::stack<raft::state, raft::event> _fsm;
-    utils::logger::Logger _log;
+
+    mutable utils::logger::Logger _logger;
 };
 
 }
