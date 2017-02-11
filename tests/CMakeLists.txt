@@ -16,6 +16,9 @@ ADD_TEST(raft-tests-fsm ${CMAKE_BINARY_DIR}/tests/raft-tests-fsm)
 ADD_EXECUTABLE(raft-tests-logger tests_logger.cc)
 ADD_TEST(raft-tests-logger ${CMAKE_BINARY_DIR}/tests/raft-tests-logger)
 
+ADD_EXECUTABLE(raft-tests-log tests_log.cc)
+ADD_TEST(raft-tests-log ${CMAKE_BINARY_DIR}/tests/raft-tests-log)
+
 ADD_EXECUTABLE(raft-tests-store tests_store.cc)
 TARGET_LINK_LIBRARIES(raft-tests-store stdc++fs)
 ADD_TEST(raft-tests-store ${CMAKE_BINARY_DIR}/tests/raft-tests-store)

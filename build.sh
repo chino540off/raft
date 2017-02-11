@@ -1,6 +1,6 @@
-#! /bin/bash
+#! /bin/bash -ex
 
-function build()
+function _build()
 {
   if [ -d build ]; then
           rm -rf build
@@ -12,10 +12,24 @@ function build()
   make
 }
 
-function test()
+function _test()
 {
   cd build
   ctest
+  cd -
 }
 
-$1
+function _cov()
+{
+  output_info=lcov.info
+  output=lcov
+
+  lcov --base-directory . --directory . --zerocounters -q
+
+  _test
+
+  lcov --base-directory . --directory . -c -o $output_info
+  genhtml -o $output -t "test coverage" --num-spaces 4 $output_info
+}
+
+_$1
