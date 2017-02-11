@@ -6,10 +6,10 @@ namespace rpc {
 
 struct vote_request_t
 {
-  unsigned int term;
-  unsigned int candidate_id;
-  unsigned int last_log_idx;
-  unsigned int last_log_term;
+  unsigned long int term;
+  unsigned long int candidate_id;
+  unsigned long int last_log_idx;
+  unsigned long int last_log_term;
 };
 
 template <typename ostream>
@@ -47,7 +47,7 @@ operator<<(ostream & os, vote_t const & vote)
 
 struct vote_response_t
 {
-  unsigned int term;
+  unsigned long int term;
   vote_t vote;
 };
 
