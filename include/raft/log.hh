@@ -28,40 +28,48 @@ inline ostream & operator<<(ostream & os, entry<E, T, I> const & entry)
 }
 
 template <typename E,
-          typename T = unsigned int,
-          typename I = unsigned int>
+          typename T = unsigned long int,
+          typename I = unsigned long int>
 class log
 {
-  typedef entry<E, T, I> log_entry;
+  private:
+    typedef entry<E, T, I> entry_t;
+    typedef std::deque<entry_t> logs_t;
+    typedef typename logs_t::size_type index_t;
+
+  public:
+    typedef E element_t;
+    typedef T term_t;
+    typedef I id_t;
 
   public:
     log(): _base(0) { }
 
   public:
-    unsigned int current() const
+    auto current() const
     {
       return _deque.size() + _base;
     }
 
-    void remove(int i, std::function<void(log_entry const &)> callback)
+    auto remove(index_t i, std::function<void(entry_t const &)> callback)
     {
       i = i - _base;
 
-      for (int end = _deque.size(); i < end; ++i)
+      for (index_t end = _deque.size(); i < end; ++i)
       {
-        log_entry entry = _deque.front();
+        entry_t entry = _deque.front();
         callback(entry);
 
         _deque.pop_front();
       }
     }
 
-    void append(E const & e, T const & term = 0, I const & id = 0)
+    auto append(element_t const & e, term_t const & term = 0, id_t const & id = 0)
     {
       _deque.push_back({term, id, e});
     }
 
-    log_entry const & at(unsigned int i) const
+    auto const & at(index_t i) const
     {
       i = i - _base - 1;
       return _deque.at(i);
@@ -72,12 +80,12 @@ class log
       return _deque.size();
     }
 
-    void poll(std::function<void(log_entry const &)> callback)
+    auto poll(std::function<void(entry_t const &)> callback)
     {
       if (_deque.size() == 0)
         return;
 
-      log_entry entry = _deque.front();
+      entry_t entry = _deque.front();
       callback(entry);
 
       _deque.pop_front();
@@ -86,12 +94,13 @@ class log
 
   public:
     template <typename ostream>
-    ostream & print(ostream & os) const
+    auto & print(ostream & os) const
     {
       os << "log(count: " << _deque.size()
          << ", base: " << _base
          << "): "<< std::endl;
-      for (unsigned int i = 0; i < _deque.size(); ++i)
+
+      for (index_t i = 0; i < _deque.size(); ++i)
       {
         os << "[" << std::setfill('0') << std::setw(16) << i + _base + 1 << "]: "
            << _deque[i];
@@ -103,13 +112,13 @@ class log
     }
 
   private:
-    std::deque<log_entry> _deque;
-    unsigned int _base;
+    logs_t _deque;
+    index_t _base;
 };
 
 template <typename ostream,
           typename E, typename T, typename I>
-inline ostream & operator<<(ostream & os, log<E, T, I> const & log)
+inline auto & operator<<(ostream & os, log<E, T, I> const & log)
 {
   return log.print(os);
 }
