@@ -9,6 +9,7 @@
 using loglevel = utils::logger::level;
 
 # include <raft/fsm.hh>
+# include <raft/log.hh>
 # include <raft/node.hh>
 # include <raft/rpc.hh>
 
@@ -20,6 +21,9 @@ class server
   public:
     typedef std::shared_ptr<raft::node<T>> node_t;
     typedef std::map<unsigned int, node_t> nodes_t;
+
+    typedef log<unsigned int> logs_t;
+    typedef typename logs_t::term_t term_t;
 
     template <typename rpc_t>
     using rpc_callback = std::function<void(server<T> const &,
@@ -48,6 +52,19 @@ class server
     auto is_leader() const
     {
       return _fsm.state() == raft::state::leader;
+    }
+
+  public:
+    auto current_index() const
+    {
+      return _logs.current();
+    }
+
+    auto last_log_term() const
+    {
+      auto current = current_index();
+
+      return (0 < current) ? _logs.at(current).term : 0;
     }
 
     /**
@@ -108,7 +125,7 @@ class server
      * @return
      */
     template <typename ostream>
-    ostream & print(ostream & os) const
+    auto & print(ostream & os) const
     {
       os << "Server(id: " << id()
          << ", term: " << _current_term
@@ -175,7 +192,7 @@ class server
      *
      * @return
      */
-    bool should_grant_vote(raft::rpc::vote_request_t const & vreq)
+    auto should_grant_vote(raft::rpc::vote_request_t const & vreq)
     {
       if (!_me->is_voting())
         return false;
@@ -186,9 +203,19 @@ class server
       if (already_vote())
         return false;
 
-      // FIXME: check logs indexes
+      auto current = current_index();
 
-      return true;
+      if (current == 0)
+        return true;
+
+      auto entry = _logs.at(current);
+      if (entry.term < vreq.last_log_term)
+        return true;
+
+      if (vreq.last_log_term == entry.term && current <= vreq.last_log_idx)
+        return true;
+
+      return false;
     }
 
   public:
@@ -215,8 +242,8 @@ class server
         raft::rpc::vote_request_t vreq = {
           _current_term,
           _me->id(),
-          0 /* FIXME */,
-          0 /* FIXME */,
+          current_index(),
+          last_log_term(),
         };
 
         for (auto & i : _nodes)
@@ -332,7 +359,8 @@ class server
     node_t _vote_for;
 
     node_t _me;
-    unsigned int _current_term;
+    logs_t _logs;
+    term_t _current_term;
 
     mutable utils::logger::Logger _logger;
 };
