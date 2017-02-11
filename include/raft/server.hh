@@ -77,7 +77,7 @@ class server
         }
       }
 
-      DEBUG(_logger, votes, "/", voting_nodes, "votes");
+      DEBUG(_logger, votes, "/", voting_nodes, " votes");
 
       return ((voting_nodes / 2) + 1) <= votes;
     }
@@ -281,7 +281,7 @@ class server
      */
     auto recv_vote_response(raft::rpc::vote_response_t const & vresp, unsigned int from)
     {
-      INFO(_logger, *this, "receives", vresp);
+      INFO(_logger, *this, "receives ", vresp);
 
       if (!is_candidate())
       {

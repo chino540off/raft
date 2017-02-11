@@ -105,7 +105,7 @@ class fsm
   private:
     bool transit(utils::fsm::callback cb, raft::state state)
     {
-      DEBUG(_logger, "Try to go to", state);
+      DEBUG(_logger, "Try to go to ", state);
       return cb() ? _fsm.set(state) : false;
     }
 
