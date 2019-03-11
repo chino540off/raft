@@ -1,124 +1,301 @@
 #ifndef RAFT_LOG_HH_
 # define RAFT_LOG_HH_
 
-# include <iostream>
-# include <iomanip>
+# include <cassert>
 # include <deque>
-# include <functional>
+# include <memory>
+
+# include <raft/traits.hh>
 
 namespace raft {
 
-template <typename E, typename T, typename I>
+enum class entry_type_t
+{
+  regular,
+  user = 100,
+};
+
+template <typename ostream>
+ostream & operator<<(ostream & os, entry_type_t const & t)
+{
+  switch (t)
+  {
+    case entry_type_t::regular: return os << "regular", os;
+    case entry_type_t::user: return os << "user", os;
+    default: assert(false);
+  }
+}
+
+template <typename T,
+          typename term_t,
+          typename id_t>
 struct entry
 {
-  T term;
-  I id;
-  E elt;
+  entry_type_t type;
+  term_t term;
+  id_t id;
+  T elt;
 };
 
 template <typename ostream,
-          typename E, typename T, typename I>
-inline ostream & operator<<(ostream & os, entry<E, T, I> const & entry)
+          typename T,
+          typename term_t,
+          typename id_t>
+inline ostream & operator<<(ostream & os, entry<T, term_t, id_t> const & entry)
 {
-  os << "entry(term: " << entry.term
-     << ", id: " << entry.id
-     << ", elt: " << entry.elt
-     << ")";
-  return os;
+  return os << "{"
+     << "\"type\": \"" << entry.type << "\", "
+     << "\"term\": " << entry.term << ", "
+     << "\"id\": " << entry.id << ", "
+     << "\"elt\": \"" << entry.elt << "\"}", os;
 }
 
-template <typename E,
-          typename T = unsigned long int,
-          typename I = unsigned long int>
+enum class log_status_t
+{
+  ok = 0,
+  fail = 1,
+};
+
+template <>
+struct enum_traits<log_status_t> { static constexpr bool has_any = true; };
+
+template <typename T,
+          typename term_t_ = unsigned long int,
+          typename id_t_ = unsigned long int>
 class log
 {
-  private:
-    typedef entry<E, T, I> entry_t;
-    typedef std::deque<entry_t> logs_t;
-    typedef typename logs_t::size_type index_t;
+  public:
+    using term_t = term_t_;
+    using id_t = id_t_;
+    using entry_t = entry<T, term_t, id_t>;
+    using logs_t = std::deque<std::shared_ptr<entry_t>>;
+    using index_t = typename logs_t::size_type;
 
   public:
-    typedef E element_t;
-    typedef T term_t;
-    typedef I id_t;
+    log(): base_(0) { }
 
   public:
-    log(): _base(0) { }
-
-  public:
-    auto current() const
+    /**
+     * @brief Get number of entries held in logs
+     */
+    index_t count() const noexcept
     {
-      return _deque.size() + _base;
+      return deque_.size();
     }
 
-    auto remove(index_t i, std::function<void(entry_t const &)> callback)
+  public:
+    /**
+     * @brief Get entry at an index 
+     *
+     * @return return a pointer to an entry, or nullptr
+     */
+    std::shared_ptr<entry_t> at(index_t idx) const noexcept
     {
-      i = i - _base;
+      int si = idx - base_ - 1;
+      auto ui = idx - base_ - 1;
 
-      for (index_t end = _deque.size(); i < end; ++i)
+      if (si < 0 || deque_.size() <= ui)
+        return nullptr;
+
+      return deque_.at(ui);
+    }
+
+  public:
+    /**
+     * @brief Get current index
+     */
+    index_t current() const noexcept
+    {
+      return base_ + deque_.size();
+    }
+
+  public:
+    /**
+     * @brief Get youngest entry appended
+     *
+     * @return return a pointer to an entry, or nullptr
+     */
+    std::shared_ptr<entry_t> tail() const noexcept
+    {
+      if (deque_.size() == 0)
+        return nullptr;
+
+      return deque_.back();
+    }
+
+  public:
+    /**
+     * @brief Append an entry to logs
+     *
+     * @tparam F Callback function type (entry_t, index_t) -> int
+     * @param e Entry to append
+     * @param f Callback function
+     *
+     * @return ok if success, or a log_status_t error value
+     */
+    template <typename F>
+    log_status_t append(entry_t const & e, F && f)
+    {
+      index_t idx = base_ + deque_.size() + 1;
+
+      log_status_t ret = f(e, idx);
+      if (any(ret))
+        return ret;
+
+      deque_.emplace_back(std::make_shared<entry_t>(e));
+
+      return log_status_t::ok;
+    }
+
+    log_status_t append(entry_t const & e)
+    {
+      return append(e, [](auto, auto){ return log_status_t::ok; });
+    }
+
+  public:
+    /**
+     * @brief Clear logs
+     *
+     * @tparam F Callback function type (entry_t, index_t) -> void
+     * @param f Callback function
+     */
+    template <typename F>
+    void clear(F && f)
+    {
+      for (auto i = 0; deque_.size(); ++i)
       {
-        entry_t entry = _deque.front();
-        callback(entry);
+        f(*deque_.front(), base_ + i + 1);
 
-        _deque.pop_front();
+        deque_.pop_front();
       }
     }
 
-    auto append(element_t const & e, term_t const & term = 0, id_t const & id = 0)
+    void clear()
     {
-      _deque.push_back({term, id, e});
-    }
-
-    auto const & at(index_t i) const
-    {
-      i = i - _base - 1;
-      return _deque.at(i);
-    }
-
-    auto count() const
-    {
-      return _deque.size();
-    }
-
-    auto poll(std::function<void(entry_t const &)> callback)
-    {
-      if (_deque.size() == 0)
-        return;
-
-      entry_t entry = _deque.front();
-      callback(entry);
-
-      _deque.pop_front();
-      _base++;
+      clear([](auto, auto) {});
     }
 
   public:
+    /**
+     * @brief Delete entries from an index in logs
+     *
+     * @tparam F Callback function type (entry_t, index_t) -> int
+     * @param idx Onwards index 
+     * @param f Callback function
+     *
+     * @return ok if success, or a log_status_t error value
+     */
+    template <typename F>
+    log_status_t remove(index_t idx, F && f)
+    {
+      if (idx == 0)
+        return log_status_t::fail;
+
+      if (idx < base_)
+        idx = base_;
+
+      while (idx <= (base_ + deque_.size()) && deque_.size())
+      {
+        log_status_t ret = f(*deque_.back(), base_ + deque_.size());
+
+        if (any(ret))
+          return ret;
+
+        deque_.pop_back();
+      }
+
+      return log_status_t::ok;
+    }
+
+    log_status_t remove(index_t idx)
+    {
+      return remove(idx, [](auto, auto){ return log_status_t::ok; });
+    }
+
+  public:
+    /**
+     * @brief Move forwards on entries
+     *
+     * @tparam F Callback function type (entry_t, index_t) -> int
+     * @param f Callback function
+     *
+     * @return ok if success, or a log_status_t error value
+     */
+    template <typename F>
+    log_status_t poll(F && f)
+    {
+      if (deque_.size() == 0)
+        return log_status_t::fail;
+
+      log_status_t ret = f(*deque_.front(), base_ + 1);
+      if (any(ret))
+        return ret;
+
+      deque_.pop_front();
+      ++base_;
+
+      return log_status_t::ok;
+    }
+
+    log_status_t poll()
+    {
+      return poll([](auto, auto) { return log_status_t::ok; });
+    }
+
+  public:
+    /**
+     * @brief Load from a snapshot
+     *
+     * @param idx New starting index
+     * @param term New term
+     */
+    void load(index_t idx, term_t)
+    {
+      clear();
+      base_ = idx;
+    }
+
+  public:
+    /**
+     * @brief Display logs
+     *
+     * @tparam ostream output stream type
+     * @param os output stream
+     *
+     * @return output stream 
+     */
     template <typename ostream>
-    auto & print(ostream & os) const
+    ostream & print(ostream & os) const
     {
-      os << "log(count: " << _deque.size()
-         << ", base: " << _base
-         << "): "<< std::endl;
+      os << "{"
+        << "\"count\": " << deque_.size() << ", "
+        << "\"base\": " << base_ << ", "
+        << "\"entries\": [";
 
-      for (index_t i = 0; i < _deque.size(); ++i)
+      auto first = true;
+      for (index_t i = 0; i < deque_.size(); ++i)
       {
-        os << "[" << std::setfill('0') << std::setw(16) << i + _base + 1 << "]: "
-           << _deque[i];
+        if (!first)
+          os << ", ";
+        first = false;
 
-        if (i < _deque.size() - 1)
-          os << std::endl;
+        os << *deque_[i];
       }
+
+      os << "]}";
       return os;
     }
 
   private:
-    logs_t _deque;
-    index_t _base;
+    logs_t deque_;
+    index_t base_;
 };
 
 template <typename ostream,
-          typename E, typename T, typename I>
-inline auto & operator<<(ostream & os, log<E, T, I> const & log)
+          typename T,
+          typename term_t,
+          typename id_t>
+inline ostream & operator<<(ostream & os, log<T, term_t, id_t> const & log)
 {
   return log.print(os);
 }
