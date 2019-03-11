@@ -5,116 +5,161 @@
 
 namespace raft {
 
-template <typename T>
+template <typename T,
+          typename id_t = unsigned long int,
+          typename index_t = unsigned long int>
 class node
 {
   public:
-    typedef std::shared_ptr<T> user_data_t;
+    using user_data_t = std::shared_ptr<T>;
 
   public:
-    template <typename I>
-    node(I const & id,
-         user_data_t const & user_data = nullptr):
-      _next_idx(1),
-      _match_idx(0),
-      _id(id),
-      _flags(NODE_VOTING),
-      _user_data(user_data)
+    node(id_t const & id, user_data_t const & user_data = nullptr):
+      id_(id),
+      next_idx_(1),
+      match_idx_(0),
+      user_data_(user_data),
+      flags_(NODE_VOTING)
     {
     }
 
   public:
-    auto next_idx() const
+    index_t next_idx() const
     {
-      return _next_idx;
+      return next_idx_;
     }
-    template <typename I>
-    auto next_idx(I const & next_idx)
+    void next_idx(index_t const & next_idx)
     {
-      _next_idx = (next_idx < 1) ? 1 : next_idx;
-    }
-
-    auto match_idx() const
-    {
-      return _match_idx;
-    }
-    template <typename I>
-    auto match_idx(I const & match_idx)
-    {
-      _match_idx = match_idx;
+      next_idx_ = (next_idx < 1) ? 1 : next_idx;
     }
 
-    auto id() const
+  public:
+    index_t match_idx() const
     {
-      return _id;
+      return match_idx_;
+    }
+    void match_idx(index_t const & match_idx)
+    {
+      match_idx_ = match_idx;
+    }
+
+  public:
+    id_t id() const
+    {
+      return id_;
     }
 
   private:
     enum flags
     {
-      NODE_VOTE_FOR_ME    = (1 << 0),
-      NODE_VOTING         = (1 << 1),
-      NODE_SUFFICIENT_LOG = (1 << 2),
+      NODE_VOTE_FOR_ME        = (1 << 0),
+      NODE_VOTING             = (1 << 1),
+      NODE_SUFFICIENT_LOG     = (1 << 2),
+      NODE_INACTIVE           = (1 << 3),
+      NODE_VOTING_COMMITED    = (1 << 4),
+      NODE_ADDITION_COMMITED  = (1 << 5),
     };
 
     template <typename F>
-    auto _check_flag(F f) const
+    bool _check_flag(F f) const
     {
-      return (_flags & f) != 0;
+      return (flags_ & f) != 0;
     }
 
     template <typename F, typename V>
-    auto _set_flag(F f, V v)
+    void _set_flag(F f, V v)
     {
-      v ? _flags |= f : _flags &= ~f;
-      return v;
+      v ? flags_ |= f : flags_ &= ~f;
     }
 
   public:
-    auto has_vote_for_me() const
+    bool has_vote_for_me() const
     {
       return _check_flag(NODE_VOTE_FOR_ME);
     }
     template <typename V>
-    auto has_vote_for_me(V v)
+    void has_vote_for_me(V v)
     {
-      return _set_flag(NODE_VOTE_FOR_ME, v);
+      _set_flag(NODE_VOTE_FOR_ME, v);
     }
 
-    auto is_voting() const
+    bool is_voting() const
     {
       return _check_flag(NODE_VOTING);
     }
     template <typename V>
-    auto is_voting(V v)
+    void is_voting(V v)
     {
-      return _set_flag(NODE_VOTING ,v);
+      _set_flag(NODE_VOTING ,v);
     }
 
-    auto has_sufficient_logs() const
+    bool has_sufficient_logs() const
     {
       return _check_flag(NODE_SUFFICIENT_LOG);
     }
     template <typename V>
-    auto has_sufficient_logs(V v)
+    void has_sufficient_logs(V v)
     {
-      return _set_flag(NODE_SUFFICIENT_LOG ,v);
+      _set_flag(NODE_SUFFICIENT_LOG, v);
+    }
+
+    bool is_active() const
+    {
+      return !_check_flag(NODE_INACTIVE);
+    }
+    template <typename V>
+    void is_active(V v)
+    {
+      _set_flag(NODE_INACTIVE, !v);
+    }
+
+    bool is_voting_commited() const
+    {
+      return _check_flag(NODE_VOTING_COMMITED);
+    }
+    template <typename V>
+    void is_voting_commited(V v)
+    {
+      _set_flag(NODE_VOTING_COMMITED, v);
+    }
+
+    bool is_addition_commited() const
+    {
+      return _check_flag(NODE_ADDITION_COMMITED);
+    }
+    template <typename V>
+    void is_addition_commited(V v)
+    {
+      _set_flag(NODE_ADDITION_COMMITED, v);
+    }
+
+  public:
+    template <typename ostream>
+    ostream & print(ostream & os) const
+    {
+      os << "{"
+        << "\"id\": " << id_
+        << "}";
+      return os;
     }
 
   private:
-    unsigned int  _next_idx;
-    unsigned int  _match_idx;
-    unsigned int  _id;
-    unsigned int  _flags;
-    user_data_t   _user_data;
+    id_t id_;
+    index_t next_idx_;
+    index_t match_idx_;
+    user_data_t user_data_;
+
+    unsigned int flags_;
 };
 
-template <typename ostream, typename T>
+template <typename ostream,
+          typename T,
+          typename id_t = unsigned long int,
+          typename index_t = unsigned long int>
 ostream &
-operator<<(ostream & os, node<T> const & node)
+operator<<(ostream & os, node<T, id_t, index_t> const & node)
 {
-  os << "Node(" << node.id() << ")";
-  return os;
+  return node.print(os);
 }
 
 } /** !raft  */
