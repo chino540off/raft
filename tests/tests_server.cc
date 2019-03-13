@@ -1,100 +1,167 @@
-#include <cassert>
-#include <queue>
-#include <thread>
+#include <gtest/gtest.h>
 
 #include <raft/server.hh>
 
-enum class msg_type_t
+TEST(TestServer, ServerVotedForRecordsWhoWeVotedFor)
 {
-  VOTE_REQUEST,
-  VOTE_RESPONSE,
-};
+  raft::server<int> s;
 
-struct msg_t
-{
-  msg_t(raft::rpc::vote_request_t const & msg, unsigned int _from, unsigned int _to):
-    type(msg_type_t::VOTE_REQUEST),
-    from(_from),
-    to(_to),
-    vote_request(msg) { }
+  s.node_add(2);
+  s.vote_for(s.node_get(2));
 
-  msg_t(raft::rpc::vote_response_t const & msg, unsigned int _from, unsigned int _to):
-    type(msg_type_t::VOTE_RESPONSE),
-    from(_from),
-    to(_to),
-    vote_response(msg) { }
-
-  msg_type_t type;
-  unsigned int from;
-  unsigned int to;
-
-  union
-  {
-    raft::rpc::vote_request_t   vote_request;
-    raft::rpc::vote_response_t  vote_response;
-  };
-};
-
-using namespace std::chrono_literals;
-
-int
-main()
-{
-  raft::server<int> servers[3] = { 0, 1, 2 };
-  std::queue<msg_t> msg_queue[3];
-  std::thread threads[3];
-
-  for (unsigned int i = 0; i < 3; ++i)
-  {
-    for (unsigned int j = 0; j < 3; ++j)
-      if (j != i)
-        servers[i].add_node(j);
-
-    threads[i] = std::thread([&msg_queue, &servers, i]()
-    {
-      std::cout << "Run thread " << i << std::endl;
-
-      while (true)
-      {
-        while (!msg_queue[i].empty())
-        {
-          auto msg = msg_queue[i].front();
-          msg_queue[i].pop();
-
-          switch (msg.type)
-          {
-            case msg_type_t::VOTE_REQUEST:
-              {
-                raft::rpc::vote_response_t vresp;
-
-                servers[i].recv_vote_request(msg.vote_request, vresp);
-                msg_queue[msg.from].push(msg_t(vresp, msg.to, msg.from));
-              }
-              break;
-
-            case msg_type_t::VOTE_RESPONSE:
-              {
-                servers[i].recv_vote_response(msg.vote_response, msg.from);
-              }
-              break;
-
-            default:
-              assert(false);
-          }
-        }
-
-        std::this_thread::sleep_for(100ms);
-      }
-    });
-  }
-
-  servers[0].election_start([&msg_queue](auto server, auto node, auto vreq)
-  {
-    std::cout << server << " sends " << vreq << " to " << node << std::endl;
-
-    msg_queue[node.id()].push(msg_t(vreq, server.id(), node.id()));
-  });
-
-  for (unsigned int i = 0; i < 3; ++i)
-    threads[i].join();
+  EXPECT_EQ(s.voted_for()->id(), 2);
 }
+
+TEST(TestServer, GetMyNode)
+{
+  raft::server<int> s;
+
+  auto me = s.node_add(1, true);
+
+  EXPECT_EQ(s.my_node(), me);
+}
+
+TEST(TestServer, IndexStartsAt1)
+{
+  raft::server<int> s;
+
+  EXPECT_EQ(s.current_index(), 0);
+
+  s.append({raft::entry_type_t::regular, 0, 1, 0});
+
+  EXPECT_EQ(s.current_index(), 1);
+}
+
+TEST(TestServer, CurrentTermDefaultsTo0)
+{
+  raft::server<int> s;
+
+  EXPECT_EQ(s.current_term(), 0);
+}
+
+TEST(TestServer, CurrentTermSetsTerm)
+{
+  raft::server<int> s;
+
+  s.current_term(5);
+  EXPECT_EQ(s.current_term(), 5);
+}
+
+TEST(TestServer, VotingResultsInVoting)
+{
+  raft::server<int> s;
+
+  s.node_add(1);
+  s.node_add(2);
+
+  s.vote_for(s.node_get(1));
+  EXPECT_EQ(s.voted_for()->id(), 1);
+
+  s.vote_for(s.node_get(2));
+  EXPECT_EQ(s.voted_for()->id(), 2);
+}
+
+TEST(TestServer, AddNodeMakesNonVotingNodeVoting)
+{
+  raft::server<int> s;
+
+  auto n = s.node_non_voting_add(1);
+  EXPECT_FALSE(n->is_voting());
+
+  s.node_add(1);
+  EXPECT_TRUE(n->is_voting());
+
+  EXPECT_EQ(s.node_count(), 1);
+}
+
+TEST(TestServer, AddNodeWithAlreadyExistingIdIsNotAllowed)
+{
+  raft::server<int> s;
+
+  s.node_add(1);
+  s.node_add(2);
+
+  EXPECT_EQ(s.node_add(1), nullptr);
+  EXPECT_EQ(s.node_add(2), nullptr);
+}
+
+TEST(TestServer, AddNonVotingNodeWithAlreadyExistingIdIsNotAllowed)
+{
+  raft::server<int> s;
+
+  s.node_non_voting_add(1);
+  s.node_non_voting_add(2);
+
+  EXPECT_EQ(s.node_non_voting_add(1), nullptr);
+  EXPECT_EQ(s.node_non_voting_add(2), nullptr);
+}
+
+TEST(TestServer, AddNonVotingNodeWithAlreadyExistingVotingIdIsNotAllowed)
+{
+  raft::server<int> s;
+
+  s.node_add(1);
+  s.node_add(2);
+
+  EXPECT_EQ(s.node_non_voting_add(1), nullptr);
+  EXPECT_EQ(s.node_non_voting_add(2), nullptr);
+}
+
+TEST(TestServer, RemoveNode)
+{
+  raft::server<int> s;
+
+  s.node_add(1);
+  s.node_add(2);
+  EXPECT_NE(s.node_get(1), nullptr);
+  EXPECT_NE(s.node_get(2), nullptr);
+
+  s.node_remove(1);
+  EXPECT_EQ(s.node_get(1), nullptr);
+  EXPECT_NE(s.node_get(2), nullptr);
+
+  s.node_remove(2);
+  EXPECT_EQ(s.node_get(1), nullptr);
+  EXPECT_EQ(s.node_get(2), nullptr);
+}
+
+TEST(TestServer, ElectionStartIncrementsTerm)
+{
+  raft::server<int> s;
+
+  s.current_term(1);
+  s.election_start();
+  EXPECT_EQ(s.current_term(), 2);
+}
+
+TEST(TestServer, ServerStartsAsFollower)
+{
+  raft::server<int> s;
+
+  EXPECT_TRUE(s.state() == raft::state_t::follower);
+}
+
+TEST(TestServer, AppendEntryIsRetrievable)
+{
+  raft::server<int> s;
+
+  s.current_term(5);
+  s.append({raft::entry_type_t::regular, 142, 121, 151});
+  s.append({raft::entry_type_t::regular, 242, 221, 251});
+
+  EXPECT_NE(s.get(1), nullptr);
+  EXPECT_EQ(s.get(1)->term, 142);
+  EXPECT_EQ(s.get(1)->id, 121);
+  EXPECT_EQ(s.get(1)->elt, 151);
+
+  EXPECT_NE(s.get(2), nullptr);
+  EXPECT_EQ(s.get(2)->term, 242);
+  EXPECT_EQ(s.get(2)->id, 221);
+  EXPECT_EQ(s.get(2)->elt, 251);
+}
+
+//TEST(TestServer, AppendEntryIsRetrievable)
+//{
+//  raft::server<int> s;
+//
+//}

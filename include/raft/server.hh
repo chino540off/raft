@@ -2,367 +2,392 @@
 # define RAFT_SERVER_HH_
 
 # include <cassert>
-# include <map>
+# include <unordered_map>
+# include <memory>
+# include <chrono>
 
-# include <utils/logger.hh>
-
-using loglevel = utils::logger::level;
-
-# include <raft/fsm.hh>
+# include <raft/traits.hh>
 # include <raft/log.hh>
 # include <raft/node.hh>
 # include <raft/rpc.hh>
+# include <raft/fsm.hh>
+
+using namespace std::chrono_literals;
 
 namespace raft {
 
-template <typename T>
+enum class status_t
+{
+  ok = 0,
+  fail = 1,
+};
+
+template <>
+struct enum_traits<status_t> { static constexpr bool has_any = true; };
+
+status_t convert(log_status_t e)
+{
+  switch (e)
+  {
+    case log_status_t::ok:
+      return status_t::ok;
+    case log_status_t::fail:
+      return status_t::fail;
+    default:
+      assert(false);
+  }
+}
+
+template <typename T,
+          typename node_id_t = unsigned long int,
+          typename term_t_ = unsigned long int,
+          typename index_id_t_ = unsigned long int>
 class server
 {
   public:
-    typedef std::shared_ptr<raft::node<T>> node_t;
-    typedef std::map<unsigned int, node_t> nodes_t;
+    using log_t = log<T, term_t_, index_id_t_>;
+    using index_t = typename log_t::index_t;
+    using index_id_t = typename log_t::id_t;
+    using term_t = typename log_t::term_t;
+    using entry_t = typename log_t::entry_t;
 
-    typedef log<unsigned int> logs_t;
-    typedef typename logs_t::term_t term_t;
+    using node_t = node<T, node_id_t, index_t>;
+    using nodes_t = std::unordered_map<node_id_t, std::shared_ptr<node_t>>;
 
-    template <typename rpc_t>
-    using rpc_callback = std::function<void(server<T> const &,
-                                            raft::node<T> const &,
-                                            rpc_t const &)>;
-
-    typedef rpc_callback<raft::rpc::vote_request_t>   vote_req_callback;
-
-  public:
-    server(unsigned int id):
-      _me(std::make_shared<raft::node<T>>(id)),
-      _current_term(0)
-    {
-      _nodes.insert(std::make_pair(id, _me));
-    }
+    using vote_request_t = rpc::vote_request_t<term_t, index_t, node_id_t>;
+    using vote_response_t = rpc::vote_response_t<term_t>;
+    using appendentries_request_t = rpc::appendentries_request_t<T, term_t, index_t, index_id_t>;
+    using appendentries_response_t = rpc::appendentries_response_t<term_t, index_t>;
 
   public:
-    auto is_follower() const
+    server():
+      current_term_(0),
+      timeout_elasped_(0ms),
+      request_timeout_(200ms),
+      election_timeout_(1000ms),
+      gen_(rd_()),
+      this_node_(nullptr),
+      voted_for_(nullptr),
+      leader_(nullptr)
     {
-      return _fsm.state() == raft::state::follower;
-    }
-    auto is_candidate() const
-    {
-      return _fsm.state() == raft::state::candidate;
-    }
-    auto is_leader() const
-    {
-      return _fsm.state() == raft::state::leader;
+      randomize_election_timeout();
     }
 
   public:
-    auto current_index() const
+    std::shared_ptr<node_t> node_add(node_id_t const & id, bool is_self = false)
     {
-      return _logs.current();
-    }
-
-    auto last_log_term() const
-    {
-      auto current = current_index();
-
-      return (0 < current) ? _logs.at(current).term : 0;
-    }
-
-    /**
-     * @brief
-     *
-     * @return
-     */
-    auto is_majority() const
-    {
-      unsigned int votes = 0;
-      unsigned int voting_nodes = 0;
-
-      for (auto & it : _nodes)
+      /* set to voting if node already exists */
+      auto node = node_get(id);
+      if (node)
       {
-        auto node = it.second;
-
-        if (node == _me)
-          continue;
-
-        if (node->is_voting())
+        if (!node->is_voting())
         {
-          ++voting_nodes;
-          if (node->has_vote_for_me())
-          {
-            ++votes;
-          }
+          node->is_voting(true);
+          return node;
+        }
+        else
+        {
+          /* we shouldn't add a node twice */
+          return nullptr;
         }
       }
 
-      DEBUG(_logger, votes, "/", voting_nodes, " votes");
+      node = std::make_shared<node_t>(id);
+      if (node == nullptr)
+        return nullptr;
 
-      return ((voting_nodes / 2) + 1) <= votes;
-    }
+      nodes_.insert({id, node});
 
-    auto already_vote() const
-    {
-      return _vote_for != nullptr;
-    }
-
-    auto vote_for(node_t node)
-    {
-      _vote_for = node;
-    }
-
-  public:
-    auto id() const
-    {
-      return _me->id();
-    }
-
-  public:
-    /**
-     * @brief
-     *
-     * @tparam ostream
-     * @param os
-     *
-     * @return
-     */
-    template <typename ostream>
-    auto & print(ostream & os) const
-    {
-      os << "Server(id: " << id()
-         << ", term: " << _current_term
-         << ", state: " << _fsm.state()
-         <<  ")";
-      return os;
-    }
-
-
-  public:
-    /**
-     * @brief
-     *
-     * @param id
-     * @param voting
-     *
-     * @return
-     */
-    auto add_node(unsigned int id, bool voting = true)
-    {
-      auto node = std::make_shared<raft::node<T>>(id);
-
-      node->is_voting(voting);
-
-      _nodes.insert(std::make_pair(id, node));
+      if (is_self)
+        this_node_ = node;
 
       return node;
     }
 
-    /**
-     * @brief
-     *
-     * @param id
-     *
-     * @return
-     */
-    auto get_node(unsigned int id)
+    std::shared_ptr<node_t> node_non_voting_add(node_id_t const & id, bool is_self = false)
     {
-      auto it = _nodes.find(id);
+      if (node_get(id))
+        return nullptr;
 
-      return it->second;
+      auto node = node_add(id, is_self);
+      if (node == nullptr)
+        return nullptr;
+
+      node->is_voting(false);
+
+      return node;
     }
 
-    /**
-     * @brief
-     *
-     * @param id
-     *
-     * @return
-     */
-    auto remove_node(unsigned int id)
+    void node_remove(node_id_t id)
     {
-      auto it = _nodes.find(id);
+      auto it = nodes_.find(id);
 
-      if (it != _nodes.end())
-        _nodes.erase(it);
+      if (it != nodes_.end())
+        nodes_.erase(it);
     }
 
-  private:
-    /**
-     * @brief
-     *
-     * @param vreq
-     *
-     * @return
-     */
-    auto should_grant_vote(raft::rpc::vote_request_t const & vreq)
+    std::shared_ptr<node_t> node_get(node_id_t const & id) const
     {
-      if (!_me->is_voting())
-        return false;
+      auto it = nodes_.find(id);
 
-      if (vreq.term < _current_term)
-        return false;
+      if (it == nodes_.cend())
+        return nullptr;
+      else
+        return it->second;
+    }
 
-      if (already_vote())
-        return false;
+    typename nodes_t::size_type node_count() const
+    {
+      return nodes_.size();
+    }
 
-      auto current = current_index();
-
-      if (current == 0)
-        return true;
-
-      auto entry = _logs.at(current);
-      if (entry.term < vreq.last_log_term)
-        return true;
-
-      if (vreq.last_log_term == entry.term && current <= vreq.last_log_idx)
-        return true;
-
-      return false;
+    std::shared_ptr<node_t> my_node() const
+    {
+      return this_node_;
     }
 
   public:
-    /**
-     * @brief
-     *
-     * @param cb
-     *
-     * @return
-     */
-    auto election_start(vote_req_callback cb)
+    std::shared_ptr<node_t> voted_for() const
     {
-      DEBUG(_logger, "start election on ", _me->id());
+      return voted_for_;
+    }
+    status_t vote_for(std::shared_ptr<node_t> node)
+    {
+      // FIXME persist vote
+      voted_for_ = node;
 
-      auto ret = _fsm(raft::event::election, [&]()
-      {
-        for (auto & i : _nodes)
-          i.second->has_vote_for_me(false);
-
-        vote_for(_me);
-
-        _leader = nullptr;
-
-        raft::rpc::vote_request_t vreq = {
-          _current_term,
-          _me->id(),
-          current_index(),
-          last_log_term(),
-        };
-
-        for (auto & i : _nodes)
-          if (i.second != _me && i.second->is_voting())
-            cb(*this, *i.second, vreq);
-
-        return true;
-      });
-
-      assert(_fsm.state() == raft::state::candidate);
-      return ret;
+      return status_t::ok;
     }
 
-    /**
-     * @brief
-     *
-     * @param vreq
-     * @param vresp
-     *
-     * @return
-     */
-    auto recv_vote_request(raft::rpc::vote_request_t const & vreq,
-                           raft::rpc::vote_response_t & vresp)
+    unsigned int num_voting_nodes() const
     {
-      INFO(_logger, *this, " receives ", vreq);
+      unsigned int num = 0;
 
-      auto node = get_node(vreq.candidate_id);
-
-      if (_current_term < vreq.term)
+      for (auto & it : nodes_)
       {
-        _current_term = vreq.term;
-        _fsm(raft::event::high_term, [this]()
-        {
-          INFO(_logger, "Higher term: become follower");
-          return true;
-        });
+        if (it.second->is_active() && it.second->is_voting())
+          ++num;
       }
 
-      if (should_grant_vote(vreq))
-      {
-        vresp.vote = rpc::vote_t::granted;
-        _leader = nullptr;
-        _vote_for = node;
-      }
-      else
-      {
-        vresp.vote = (node != nullptr) ? rpc::vote_t::not_granted : rpc::vote_t::error;
-      }
-
-      vresp.term = _current_term;
-
-      INFO(_logger, *this, " replies ", vresp);
+      return num;
     }
 
-    /**
-     * @brief
-     *
-     * @param vresp
-     * @param from
-     *
-     * @return
-     */
-    auto recv_vote_response(raft::rpc::vote_response_t const & vresp, unsigned int from)
+    bool should_grant_vote(std::shared_ptr<node_t> node,
+                           vote_request_t const & req);
+
+  public:
+    index_t current_index() const
     {
-      INFO(_logger, *this, "receives ", vresp);
+      return log_.current();
+    }
 
-      if (!is_candidate())
+  public:
+    term_t current_term() const
+    {
+      return current_term_;
+    }
+    status_t current_term(term_t const & t)
+    {
+      if (current_term_ < t)
       {
-        DEBUG(_logger, *this, "is not candidate");
-        return;
+        // FIXME persist term
+        current_term_ = t;
+        voted_for_ = nullptr;
       }
-      else if (_current_term < vresp.term)
+
+      return status_t::ok;
+    }
+
+    term_t last_log_term() const
+    {
+      index_t index = current_index();
+
+      if (0 < index)
       {
-        _current_term = vresp.term;
-        _fsm(raft::event::high_term, [this]()
+        std::shared_ptr<entry_t> e = log_.at(index);
+
+        if (e)
+          return e->term;
+      }
+
+      return 0;
+    }
+
+  public:
+    status_t append(entry_t const & e)
+    {
+      return convert(log_.append(e));
+    }
+
+    std::shared_ptr<entry_t> get(index_t const & index)
+    {
+      return log_.at(index);
+    }
+
+  public:
+    //void become_follower()
+    //{
+    //  timeout_elasped_ = 0;
+    //}
+
+  public:
+    status_t election_start()
+    {
+      status_t ret = current_term(current_term() + 1);
+      if (any(ret))
+        return ret;
+
+      for (auto & p : nodes_)
+      {
+        auto node = p.second;
+
+        p.second->has_vote_for_me(false);
+      }
+
+      vote_for(this_node_);
+      leader_ = nullptr;
+      fsm_(event_t::election);
+
+      for (auto & p : nodes_)
+      {
+        auto node = p.second;
+
+        if (node != this_node_ &&
+            node->is_active() &&
+            node->is_voting())
         {
-          INFO(_logger, "Higher term: become follower");
-          return true;
-        });
-      }
-      else if (_current_term != vresp.term)
-      {
-        return;
-      }
-
-      switch (vresp.vote)
-      {
-        case rpc::vote_t::granted:
-        {
-          auto node = get_node(from);
-          if (node)
-            node->has_vote_for_me(true);
-
-          if (is_majority())
-            _fsm(raft::event::majority, [this]()
-            {
-              INFO(_logger, "Majority: become leader");
-              return true;
-            });
-          break;
+          send_request_vote(node);
         }
-
-        case rpc::vote_t::not_granted:
-        case rpc::vote_t::error:
-          break;
       }
+
+      return status_t::ok;
+    }
+
+  public:
+    int periodic(std::chrono::microseconds p)
+    {
+      timeout_elasped_ += p;
+
+      if (num_voting_nodes() == 1 &&
+          this_node_->is_voting() &&
+          !is_leader())
+        ;// FIXME: become leader
+
+      if (is_leader())
+      {
+        if (request_timeout_ <= timeout_elasped_)
+          ;//FIXME: send_appendentries_all
+      }
+      else if (election_timeout_rand_ < timeout_elasped_)
+      {
+      }
+    }
+
+  public:
+    int send_request_vote(std::shared_ptr<node_t> node)
+    {
+      assert(node != nullptr);
+      assert(node != this_node_);
+
+      vote_request_t msg{current_term_, node->id(), current_index(), last_log_term()};
+
+      // FIXME call send_msg
+      //return f(node, msg);
+      return 0;
+    }
+
+  public:
+    status_t recv_vote_request(std::shared_ptr<node_t> node,
+                               vote_request_t const & req,
+                               vote_response_t & resp);
+
+    status_t recv_vote_response(std::shared_ptr<node_t> node,
+                                vote_response_t const & resp);
+
+    //int raft_recv_vote_response(std::shared_ptr<node_t> node,
+    //                            vote_response_t & resp)
+    //{
+    //  else if (current_term() < resp.term)
+    //  {
+    //    int ret = current_term(resp.term);
+    //    if (ret)
+    //      return ret;
+
+    //    fsm_(event_t::high_term, [] ()
+    //    {
+    //    });
+
+    //    assert(fsm_.state() == state_t::follower);
+    //    leader_ = nullptr;
+    //  }
+    //  else if (current_term() != resp.term)
+    //  {
+    //    return 0;
+    //  }
+
+    //  switch (resp.vote)
+    //  {
+    //    case rpc::vote_t::granted:
+    //      if (node)
+    //        node->has_vote_for_me(true);
+    //      // FIXME
+    //      break;
+
+    //    case rpc::vote_t::not_granted:
+    //      break;
+    //  }
+
+    //  return 0;
+    //}
+
+  public:
+    state_t state() const
+    {
+      return fsm_.state();
+    }
+
+    bool is_leader() const
+    {
+      return fsm_.state() == state_t::leader;
+    }
+
+    bool is_candidate() const
+    {
+      return fsm_.state() == state_t::candidate;
+    }
+
+    bool is_follower() const
+    {
+      return fsm_.state() == state_t::follower;
     }
 
   private:
-    raft::fsm _fsm;
-    nodes_t _nodes;
-    node_t _leader;
-    node_t _vote_for;
+    void randomize_election_timeout()
+    {
+      std::uniform_int_distribution<> dis(0, election_timeout_.count() - 1);
 
-    node_t _me;
-    logs_t _logs;
-    term_t _current_term;
+      election_timeout_rand_ = election_timeout_ + std::chrono::milliseconds(dis(gen_));
+    }
 
-    mutable utils::logger::Logger _logger;
+  private:
+    term_t current_term_;
+
+    std::chrono::milliseconds timeout_elasped_;
+    std::chrono::milliseconds request_timeout_;
+    std::chrono::milliseconds election_timeout_;
+    std::chrono::milliseconds election_timeout_rand_;
+
+    std::random_device rd_;   //Will be used to obtain a seed for the random number engine
+    std::mt19937 gen_;        //Standard mersenne_twister_engine seeded with rd()
+
+    log_t log_;
+
+    fsm fsm_;
+
+    nodes_t nodes_;
+    std::shared_ptr<node_t> this_node_;
+    std::shared_ptr<node_t> voted_for_;
+    std::shared_ptr<node_t> leader_;
 };
 
 template <typename ostream, typename T>
@@ -374,5 +399,7 @@ operator<<(ostream & os, server<T> const & server)
 
 } /** !raft  */
 
-#endif /** !RAFT_SERVER_HH_  */
+#include <raft/server.hxx>
 
+
+#endif /** !RAFT_SERVER_HH_  */
