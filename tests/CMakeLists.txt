@@ -1,6 +1,7 @@
 add_executable(raft-tests
   ./tests_log.cc
   ./tests_node.cc
+  ./tests_rpc.cc
 )
 
 add_dependencies(raft-tests googletest)
