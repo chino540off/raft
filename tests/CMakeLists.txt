@@ -1,4 +1,5 @@
 add_executable(raft-tests
+  ./tests_logger.cc
   ./tests_log.cc
   ./tests_node.cc
   ./tests_rpc.cc
@@ -8,8 +9,9 @@ add_executable(raft-tests
 add_dependencies(raft-tests googletest)
 
 target_include_directories(raft-tests
-  PUBLIC
+  PRIVATE
     ${GTEST_INCLUDE_DIRS}
+    ${SPDLOG_INCLUDE_DIRS}
     ${RAFT_INCLUDE_DIRS}
 )
 

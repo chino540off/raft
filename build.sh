@@ -8,7 +8,9 @@ function _build()
 
   mkdir build
   cd build
-  cmake .. -DCMAKE_BUILD_TYPE=Debug
+  cmake .. \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=yes \
+    -DCMAKE_BUILD_TYPE=Debug
   make
 }
 

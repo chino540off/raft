@@ -17,6 +17,10 @@ INCLUDE(CTest)
 
 # GTest
 ADD_SUBDIRECTORY(${CMAKE_SOURCE_DIR}/deps/gtest)
+# SPDLog
+ADD_SUBDIRECTORY(${CMAKE_SOURCE_DIR}/deps/spdlog)
+
+# Set RAFT include dir
 SET(RAFT_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/include)
 
 # Test app
@@ -27,9 +31,3 @@ INSTALL(
     DESTINATION include
     COMPONENT dev
 )
-
-IF(UNIX OR CYGWIN)
-    SET(SHARE_DIR share/${CMAKE_PROJECT_NAME})
-ELSEIF (WIN32)
-    SET(SHARE_DIR bin)
-ENDIF()
