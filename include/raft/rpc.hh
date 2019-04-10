@@ -1,12 +1,14 @@
 #ifndef RAFT_RPC_HH_
-# define RAFT_RPC_HH_
+#define RAFT_RPC_HH_
 
-# include <vector>
+#include <vector>
 
-# include <raft/log.hh>
+#include <raft/log.hh>
 
-namespace raft {
-namespace rpc {
+namespace raft
+{
+namespace rpc
+{
 
 enum class vote_t
 {
@@ -17,24 +19,28 @@ enum class vote_t
 };
 
 template <typename ostream>
-ostream & operator<<(ostream & os, vote_t const & v)
+ostream &
+operator<<(ostream & os, vote_t const & v)
 {
   switch (v)
   {
-    case vote_t::granted: return os << "granted", os;
-    case vote_t::not_granted: return os << "not_granted", os;
-    case vote_t::err: return os << "error", os;
-    case vote_t::node_not_found: return os << "node_not_found", os;
-    default: assert(false);
+    case vote_t::granted:
+      return os << "granted", os;
+    case vote_t::not_granted:
+      return os << "not_granted", os;
+    case vote_t::err:
+      return os << "error", os;
+    case vote_t::node_not_found:
+      return os << "node_not_found", os;
+    default:
+      assert(false);
   }
 }
 
 /** Vote request message.
  * Sent to nodes when a server wants to become leader.
  * This message could force a leader/candidate to become a follower. */
-template <typename term_t,
-          typename index_t,
-          typename node_id_t>
+template <typename term_t, typename index_t, typename node_id_t>
 struct vote_request_t
 {
   /** currentTerm, to force other leader/candidate to step down */
@@ -50,17 +56,16 @@ struct vote_request_t
   term_t last_log_term;
 };
 
-template <typename ostream,
-          typename term_t,
-          typename index_t,
-          typename node_id_t>
-ostream & operator<<(ostream & os, vote_request_t<term_t, index_t, node_id_t> const & msg)
+template <typename ostream, typename term_t, typename index_t, typename node_id_t>
+ostream &
+operator<<(ostream & os, vote_request_t<term_t, index_t, node_id_t> const & msg)
 {
   return os << "{"
-    << "\"candidate_id\": " << msg.candidate_id << ", "
-    << "\"term\": " << msg.term << ", "
-    << "\"last_idx\": " << msg.last_log_idx << ", "
-    << "\"last_term\": " << msg.last_log_term << "}", os;
+            << "\"candidate_id\": " << msg.candidate_id << ", "
+            << "\"term\": " << msg.term << ", "
+            << "\"last_idx\": " << msg.last_log_idx << ", "
+            << "\"last_term\": " << msg.last_log_term << "}",
+         os;
 }
 
 /** Vote response message.
@@ -75,23 +80,21 @@ struct vote_response_t
   vote_t vote;
 };
 
-template <typename ostream,
-          typename term_t>
-ostream & operator<<(ostream & os, vote_response_t<term_t> const & msg)
+template <typename ostream, typename term_t>
+ostream &
+operator<<(ostream & os, vote_response_t<term_t> const & msg)
 {
   return os << "{"
-    << "\"term\": " << msg.term << ", "
-    << "\"vote\": \"" << msg.vote << "\"}", os;
+            << "\"term\": " << msg.term << ", "
+            << "\"vote\": \"" << msg.vote << "\"}",
+         os;
 }
 
 /** Appendentries message.
  * This message is used to tell nodes if it's safe to apply entries to the FSM.
  * Can be sent without any entries as a keep alive message.
  * This message could force a leader/candidate to become a follower. */
-template <typename T,
-          typename term_t,
-          typename index_t,
-          typename index_id_t>
+template <typename T, typename term_t, typename index_t, typename index_id_t>
 struct appendentries_request_t
 {
   /** currentTerm, to force other leader/candidate to step down */
@@ -113,29 +116,26 @@ struct appendentries_request_t
   std::vector<entry<T, term_t, index_id_t>> entries;
 };
 
-template <typename ostream,
-          typename T,
-          typename term_t,
-          typename index_t,
-          typename index_id_t>
-ostream & operator<<(ostream & os, appendentries_request_t<T, term_t, index_t, index_id_t> const & msg)
+template <typename ostream, typename T, typename term_t, typename index_t, typename index_id_t>
+ostream &
+operator<<(ostream & os, appendentries_request_t<T, term_t, index_t, index_id_t> const & msg)
 {
   os << "{"
-    << "\"term\": " << msg.term << ", "
-    << "\"prev_log_idx\": " << msg.prev_log_idx << ", "
-    << "\"prev_log_term\": " << msg.prev_log_term << ", "
-    << "\"leader_commit\": " << msg.leader_commit << ", "
-    << "\"entries\": [";
+     << "\"term\": " << msg.term << ", "
+     << "\"prev_log_idx\": " << msg.prev_log_idx << ", "
+     << "\"prev_log_term\": " << msg.prev_log_term << ", "
+     << "\"leader_commit\": " << msg.leader_commit << ", "
+     << "\"entries\": [";
 
   auto first = true;
   for (auto & entry : msg.entries)
-    {
-      if (!first)
-        os << ", ";
-      first = false;
+  {
+    if (!first)
+      os << ", ";
+    first = false;
 
-      os << entry;
-    }
+    os << entry;
+  }
 
   return os << "]}", os;
 }
@@ -143,8 +143,7 @@ ostream & operator<<(ostream & os, appendentries_request_t<T, term_t, index_t, i
 /** Appendentries response message.
  * Can be sent without any entries as a keep alive message.
  * This message could force a leader/candidate to become a follower. */
-template <typename term_t,
-          typename index_t>
+template <typename term_t, typename index_t>
 struct appendentries_response_t
 {
   /** currentTerm, to force other leader/candidate to step down */
@@ -165,20 +164,19 @@ struct appendentries_response_t
   index_t first_idx;
 };
 
-template <typename ostream,
-          typename term_t,
-          typename index_t>
-ostream & operator<<(ostream & os, appendentries_response_t<term_t, index_t> const & msg)
+template <typename ostream, typename term_t, typename index_t>
+ostream &
+operator<<(ostream & os, appendentries_response_t<term_t, index_t> const & msg)
 {
   return os << "{"
-    << "\"term\": " << msg.term << ", "
-    << "\"success\": " << msg.success << ", "
-    << "\"current_idx\": " << msg.current_idx << ", "
-    << "\"first_idx\": " << msg.first_idx << "}", os;
+            << "\"term\": " << msg.term << ", "
+            << "\"success\": " << msg.success << ", "
+            << "\"current_idx\": " << msg.current_idx << ", "
+            << "\"first_idx\": " << msg.first_idx << "}",
+         os;
 }
 
 } /** !rpc  */
 } /** !raft  */
 
 #endif /** !RAFT_RPC_HH_  */
-

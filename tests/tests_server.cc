@@ -160,7 +160,7 @@ TEST(TestServer, AppendEntryIsRetrievable)
   EXPECT_EQ(s.get(2)->elt, 251);
 }
 
-//TEST(TestServer, AppendEntryIsRetrievable)
+// TEST(TestServer, AppendEntryIsRetrievable)
 //{
 //  raft::server<int> s;
 //

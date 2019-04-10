@@ -2,7 +2,10 @@
 
 #include <raft/log.hh>
 
-#define entry(id) {raft::entry_type_t::regular, 0, id, 0}
+#define entry(id)                                                                                  \
+  {                                                                                                \
+    raft::entry_type_t::regular, 0, id, 0                                                          \
+  }
 
 TEST(TestLog, NewIsEmpty)
 {
@@ -15,8 +18,7 @@ TEST(TestLog, AppendIsNotEmpty)
 {
   raft::log<int, int, int> l;
 
-  l.append(entry(42), [](auto e, auto idx)
-  {
+  l.append(entry(42), [](auto e, auto idx) {
     EXPECT_EQ(e.id, 42);
     EXPECT_EQ(idx, 1);
 
@@ -71,7 +73,7 @@ TEST(TestLog, Delete)
   EXPECT_EQ(l.count(), 3);
   EXPECT_EQ(l.current(), 3);
 
-  l.remove(3, [](auto e, auto idx){
+  l.remove(3, [](auto e, auto idx) {
     EXPECT_EQ(e.id, 51);
     EXPECT_EQ(idx, 3);
     return raft::log_status_t::ok;
@@ -79,7 +81,7 @@ TEST(TestLog, Delete)
   EXPECT_EQ(l.count(), 2);
   EXPECT_EQ(l.at(3), nullptr);
 
-  l.remove(2, [](auto e, auto idx){
+  l.remove(2, [](auto e, auto idx) {
     EXPECT_EQ(e.id, 21);
     EXPECT_EQ(idx, 2);
     return raft::log_status_t::ok;
@@ -87,7 +89,7 @@ TEST(TestLog, Delete)
   EXPECT_EQ(l.count(), 1);
   EXPECT_EQ(l.at(2), nullptr);
 
-  l.remove(1, [](auto e, auto idx){
+  l.remove(1, [](auto e, auto idx) {
     EXPECT_EQ(e.id, 42);
     EXPECT_EQ(idx, 1);
     return raft::log_status_t::ok;
@@ -116,7 +118,7 @@ TEST(TestLog, DeleteHandlesLogPopFailure)
 {
   raft::log<int> l;
 
-  auto failing_log_cb = [] (auto, auto) { return raft::log_status_t::fail; };
+  auto failing_log_cb = [](auto, auto) { return raft::log_status_t::fail; };
 
   l.append(entry(42));
   l.append(entry(21));
@@ -190,8 +192,7 @@ TEST(TestLog, Poll)
   EXPECT_EQ(l.count(), 3);
   EXPECT_EQ(l.current(), 3);
 
-  auto ret = l.poll([](auto e, auto idx)
-  {
+  auto ret = l.poll([](auto e, auto idx) {
     EXPECT_EQ(e.id, 42);
     EXPECT_EQ(idx, 1);
     return raft::log_status_t::ok;
@@ -203,8 +204,7 @@ TEST(TestLog, Poll)
   EXPECT_NE(l.at(2), nullptr);
   EXPECT_NE(l.at(3), nullptr);
 
-  ret = l.poll([](auto e, auto idx)
-  {
+  ret = l.poll([](auto e, auto idx) {
     EXPECT_EQ(e.id, 21);
     EXPECT_EQ(idx, 2);
     return raft::log_status_t::ok;
@@ -216,8 +216,7 @@ TEST(TestLog, Poll)
   EXPECT_EQ(l.at(2), nullptr);
   EXPECT_NE(l.at(3), nullptr);
 
-  ret = l.poll([](auto e, auto idx)
-  {
+  ret = l.poll([](auto e, auto idx) {
     EXPECT_EQ(e.id, 51);
     EXPECT_EQ(idx, 3);
     return raft::log_status_t::ok;
@@ -239,8 +238,7 @@ TEST(TestLog, DeleteAfterPolling)
   EXPECT_EQ(l.count(), 1);
 
   // poll
-  auto ret = l.poll([](auto e, auto idx)
-  {
+  auto ret = l.poll([](auto e, auto idx) {
     EXPECT_EQ(e.id, 42);
     EXPECT_EQ(idx, 1);
     return raft::log_status_t::ok;

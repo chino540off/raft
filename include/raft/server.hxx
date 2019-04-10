@@ -1,12 +1,9 @@
 #include <raft/server.hh>
 
-namespace raft {
+namespace raft
+{
 
-
-template <typename T,
-          typename node_id_t,
-          typename term_t_,
-          typename index_id_t_>
+template <typename T, typename node_id_t, typename term_t_, typename index_id_t_>
 bool
 server<T, node_id_t, term_t_, index_id_t_>::should_grant_vote(std::shared_ptr<node_t> node,
                                                               vote_request_t const & req)
@@ -24,7 +21,7 @@ server<T, node_id_t, term_t_, index_id_t_>::should_grant_vote(std::shared_ptr<no
   if (idx == 0)
     return true;
 
-  std::shared_ptr<entry_t> entry = log_.get(req. idx);
+  std::shared_ptr<entry_t> entry = log_.get(req.idx);
   term_t entry_term;
 
   if (entry)
@@ -35,31 +32,25 @@ server<T, node_id_t, term_t_, index_id_t_>::should_grant_vote(std::shared_ptr<no
   if (entry_term < req.last_log_term)
     return true;
 
-  if (req.last_log_term == entry_term
-      && idx <= req.last_log_idx)
+  if (req.last_log_term == entry_term && idx <= req.last_log_idx)
     return true;
 
   return false;
 }
 
-template <typename T,
-          typename node_id_t,
-          typename term_t_,
-          typename index_id_t_>
+template <typename T, typename node_id_t, typename term_t_, typename index_id_t_>
 status_t
 server<T, node_id_t, term_t_, index_id_t_>::recv_vote_request(std::shared_ptr<node_t> node,
                                                               vote_request_t const & req,
                                                               vote_response_t & resp)
 {
-  status_t ret =status_t::ok;
+  status_t ret = status_t::ok;
 
   if (node == nullptr)
     node = node_get(req.candidate_id);
 
   /* Reject request if we have a leader */
-  if (leader_ != nullptr
-      && leader_ != node
-      && timeout_elasped_ < election_timeout_)
+  if (leader_ != nullptr && leader_ != node && timeout_elasped_ < election_timeout_)
   {
     resp.vote = rpc::vote_t::not_granted;
     goto end;

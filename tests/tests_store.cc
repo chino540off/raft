@@ -1,16 +1,12 @@
-#include <iostream>
 #include <cassert>
+#include <iostream>
 
-#include <raft/store/memory.hh>
 #include <raft/store/fs.hh>
+#include <raft/store/memory.hh>
 
-template <typename T,
-          typename Key,
-          typename Value>
-void utest(T store,
-           Key const & k,
-           Value const & v1,
-           Value const & v2)
+template <typename T, typename Key, typename Value>
+void
+utest(T store, Key const & k, Value const & v1, Value const & v2)
 {
   store.c(k, v1);
   assert(store.r(k) == v1);
@@ -29,7 +25,6 @@ void utest(T store,
   {
     assert(true);
   }
-
 }
 
 struct MyKey
@@ -62,9 +57,7 @@ main(void)
   utest(raft::store::memory<std::string, int>(), "k", 42, 21);
   utest(raft::store::filesystem<std::string, int>(), "k", 42, 21);
   utest(raft::store::filesystem<int, int>(), 101, 42, 21);
-  utest(raft::store::filesystem<MyKey, MyValue>(),
-        MyKey({ 101 }),
-        MyValue({ 42 }), MyValue({ 21 }));
+  utest(raft::store::filesystem<MyKey, MyValue>(), MyKey({101}), MyValue({42}), MyValue({21}));
 
   return 0;
 }

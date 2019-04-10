@@ -17,15 +17,15 @@ TEST(TestNode, SetNextIdx)
   EXPECT_EQ(n.next_idx(), 3);
 }
 
-#define check_flag(__n, __name) \
-do                              \
-{                               \
-  __n.__name(false);            \
-  EXPECT_FALSE(__n.__name());   \
-                                \
-  __n.__name(true);             \
-  EXPECT_TRUE(__n.__name());    \
-} while (0)
+#define check_flag(__n, __name)                                                                    \
+  do                                                                                               \
+  {                                                                                                \
+    __n.__name(false);                                                                             \
+    EXPECT_FALSE(__n.__name());                                                                    \
+                                                                                                   \
+    __n.__name(true);                                                                              \
+    EXPECT_TRUE(__n.__name());                                                                     \
+  } while (0)
 
 TEST(TestNode, Flags)
 {

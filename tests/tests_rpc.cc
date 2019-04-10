@@ -18,13 +18,15 @@ TEST(TestRPC, VoteResponsePrint)
 
 TEST(TestRPC, AppendEntriesRequestPrint)
 {
-  raft::rpc::appendentries_request_t<std::string, int, int, int> msg {
-      3, 42, 2, 3,
-      {
-        {raft::entry_type_t::regular, 2, 42, "hello"},
-        {raft::entry_type_t::user, 2, 43, "world"},
-      }
-  };
+  raft::rpc::appendentries_request_t<std::string, int, int, int> msg{
+    3,
+    42,
+    2,
+    3,
+    {
+      {raft::entry_type_t::regular, 2, 42, "hello"},
+      {raft::entry_type_t::user, 2, 43, "world"},
+    }};
 
   std::cout << msg << std::endl;
 }

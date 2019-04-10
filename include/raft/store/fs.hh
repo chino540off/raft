@@ -1,125 +1,123 @@
 #ifndef FS_HH_
-# define FS_HH_
+#define FS_HH_
 
-# include <experimental/filesystem>
-# include <fstream>
-# include <exception>
+#include <exception>
+#include <experimental/filesystem>
+#include <fstream>
 
-namespace raft {
-namespace store {
+namespace raft
+{
+namespace store
+{
 
 namespace fs = std::experimental::filesystem;
 
 template <typename Key, typename Value>
 class filesystem
 {
-  public:
-    filesystem():
-      _base_path("/tmp")
-    {
-    }
+public:
+  filesystem() : _base_path("/tmp") {}
 
   /**
    * @brief API
    */
-  public:
-    /**
-     * @brief Create Key
-     *
-     * @param k the key
-     * @param v the value
-     *
-     * @return false on error
-     */
-    bool
-    c(Key const & k, Value const & v)
-    {
-      fs::path        k_path = key_path(k);
-      std::ofstream   stream(k_path, std::ios::binary);
+public:
+  /**
+   * @brief Create Key
+   *
+   * @param k the key
+   * @param v the value
+   *
+   * @return false on error
+   */
+  bool
+  c(Key const & k, Value const & v)
+  {
+    fs::path k_path = key_path(k);
+    std::ofstream stream(k_path, std::ios::binary);
 
-      // FIXME
-      stream.write(reinterpret_cast<char const *>(&v), sizeof (Value));
-      stream.close();
+    // FIXME
+    stream.write(reinterpret_cast<char const *>(&v), sizeof(Value));
+    stream.close();
 
-      return true;
-    }
+    return true;
+  }
 
-    /**
-     * @brief Read Key
-     *
-     * @param k the key
-     *
-     * @return the value
-     */
-    Value
-    r(Key const & k) const
-    {
-      fs::path        k_path = key_path(k);
-      Value           value;
+  /**
+   * @brief Read Key
+   *
+   * @param k the key
+   *
+   * @return the value
+   */
+  Value
+  r(Key const & k) const
+  {
+    fs::path k_path = key_path(k);
+    Value value;
 
-      if (!fs::exists(k_path))
-        throw std::out_of_range("key not found");
+    if (!fs::exists(k_path))
+      throw std::out_of_range("key not found");
 
-      std::ifstream   stream(k_path, std::ios::binary);
+    std::ifstream stream(k_path, std::ios::binary);
 
-      // FIXME
-      stream.read(reinterpret_cast<char *>(&value), sizeof (Value));
-      stream.close();
+    // FIXME
+    stream.read(reinterpret_cast<char *>(&value), sizeof(Value));
+    stream.close();
 
-      return value;
-    }
+    return value;
+  }
 
-    /**
-     * @brief Update key
-     *
-     * @param k the key
-     * @param v the new value
-     *
-     * @return false on error
-     */
-    bool
-    u(Key const & k, Value const & v)
-    {
-      fs::path        k_path = key_path(k);
-      std::ofstream   stream(k_path, std::ios::binary);
+  /**
+   * @brief Update key
+   *
+   * @param k the key
+   * @param v the new value
+   *
+   * @return false on error
+   */
+  bool
+  u(Key const & k, Value const & v)
+  {
+    fs::path k_path = key_path(k);
+    std::ofstream stream(k_path, std::ios::binary);
 
-      // FIXME
-      stream.write(reinterpret_cast<char const *>(&v), sizeof (Value));
-      stream.close();
+    // FIXME
+    stream.write(reinterpret_cast<char const *>(&v), sizeof(Value));
+    stream.close();
 
-      return true;
-    }
+    return true;
+  }
 
-    /**
-     * @brief Delete key
-     *
-     * @param k the key
-     */
-    void
-    d(Key const & k)
-    {
-      fs::path        k_path = key_path(k);
+  /**
+   * @brief Delete key
+   *
+   * @param k the key
+   */
+  void
+  d(Key const & k)
+  {
+    fs::path k_path = key_path(k);
 
-      fs::remove(k_path);
-    }
+    fs::remove(k_path);
+  }
 
-  private:
-    fs::path
-    key_path(Key const & k) const
-    {
-      std::stringstream ss_k;
+private:
+  fs::path
+  key_path(Key const & k) const
+  {
+    std::stringstream ss_k;
 
-      ss_k << k;
+    ss_k << k;
 
-      return _base_path / ss_k.str();
-    }
+    return _base_path / ss_k.str();
+  }
 
-  private:
-    fs::path _base_path;
+private:
+  fs::path _base_path;
 };
 
 } /** !store  */
 } /** !raft  */
 
 #endif /** !FS_HH_  */
-
