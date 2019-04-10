@@ -1,5 +1,6 @@
 add_executable(raft-tests
   ./tests_logger.cc
+  ./tests_json.cc
   ./tests_log.cc
   ./tests_node.cc
   ./tests_rpc.cc
@@ -12,6 +13,7 @@ target_include_directories(raft-tests
   PRIVATE
     ${GTEST_INCLUDE_DIRS}
     ${SPDLOG_INCLUDE_DIRS}
+    ${JSON_INCLUDE_DIRS}
     ${RAFT_INCLUDE_DIRS}
 )
 
