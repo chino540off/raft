@@ -13,8 +13,8 @@ TEST(TestNode, SetNextIdx)
 {
   raft::node<int> n(1);
 
-  n.next_idx(3);
-  EXPECT_EQ(n.next_idx(), 3);
+  n.next_index(3);
+  EXPECT_EQ(n.next_index(), 3);
 }
 
 #define check_flag(__n, __name)                                                                    \

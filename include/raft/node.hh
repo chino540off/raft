@@ -14,32 +14,32 @@ public:
 
 public:
   node(id_t const & id, user_data_t const & user_data = nullptr)
-    : id_(id), next_idx_(1), match_idx_(0), user_data_(user_data), flags_(NODE_VOTING)
+    : id_(id), next_index_(1), match_index_(0), user_data_(user_data), flags_(NODE_VOTING)
   {
   }
 
 public:
   index_t
-  next_idx() const
+  next_index() const
   {
-    return next_idx_;
+    return next_index_;
   }
   void
-  next_idx(index_t const & next_idx)
+  next_index(index_t const & idx)
   {
-    next_idx_ = (next_idx < 1) ? 1 : next_idx;
+    next_index_ = (idx < 1) ? 1 : idx;
   }
 
 public:
   index_t
-  match_idx() const
+  match_index() const
   {
-    return match_idx_;
+    return match_index_;
   }
   void
-  match_idx(index_t const & match_idx)
+  match_index(index_t const & idx)
   {
-    match_idx_ = match_idx;
+    match_index_ = idx;
   }
 
 public:
@@ -159,8 +159,8 @@ public:
 
 private:
   id_t id_;
-  index_t next_idx_;
-  index_t match_idx_;
+  index_t next_index_;
+  index_t match_index_;
   user_data_t user_data_;
 
   unsigned int flags_;

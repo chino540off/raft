@@ -22,6 +22,7 @@ enum class status_t
 {
   ok = 0,
   fail = 1,
+  enomem = 2,
 };
 
 template <>
@@ -47,6 +48,7 @@ convert(log_status_t e)
 }
 
 template <typename T,
+          typename node_user_data_t = void,
           typename node_id_t = unsigned long int,
           typename term_t_ = unsigned long int,
           typename index_id_t_ = unsigned long int>
@@ -59,7 +61,7 @@ public:
   using term_t = typename log_t::term_t;
   using entry_t = typename log_t::entry_t;
 
-  using node_t = node<T, node_id_t, index_t>;
+  using node_t = node<node_user_data_t, node_id_t, index_t>;
   using nodes_t = std::unordered_map<node_id_t, std::shared_ptr<node_t>>;
 
   using vote_request_t = rpc::vote_request_t<term_t, index_t, node_id_t>;
@@ -70,10 +72,13 @@ public:
 public:
   server()
     : current_term_(0)
-    , timeout_elasped_(0ms)
+    , commit_index_(0)
+    , last_applied_index_(0)
+    , elapsed_timeout_(0ms)
     , request_timeout_(200ms)
     , election_timeout_(1000ms)
     , gen_(rd_())
+    , state_(state_t::follower)
     , this_node_(nullptr)
     , voted_for_(nullptr)
     , leader_(nullptr)
@@ -182,9 +187,28 @@ public:
 
     for (auto & it : nodes_)
     {
-      if (it.second->is_active() && it.second->is_voting())
+      auto node = it.second;
+      if (node->is_active() && node->is_voting())
         ++num;
     }
+
+    return num;
+  }
+
+  unsigned int
+  num_voting_nodes_for_me() const
+  {
+    unsigned int num = 0;
+
+    for (auto & it : nodes_)
+    {
+      auto node = it.second;
+      if (node->is_active() && node->is_voting() && node->has_vote_for_me())
+        ++num;
+    }
+
+    if (voted_for_ == this_node_)
+      ++num;
 
     return num;
   }
@@ -192,11 +216,20 @@ public:
   bool
   should_grant_vote(std::shared_ptr<node_t> node, vote_request_t const & req);
 
-public:
-  index_t
-  current_index() const
+  bool
+  is_majority(unsigned int const nnodes, unsigned int const nvotes)
   {
-    return log_.current();
+    if (nnodes < nvotes)
+      return false;
+
+    return ((nnodes / 2) + 1) <= nvotes;
+  }
+
+public:
+  std::shared_ptr<node_t>
+  leader() const
+  {
+    return leader_;
   }
 
 public:
@@ -218,6 +251,36 @@ public:
     return status_t::ok;
   }
 
+  index_t
+  current_index() const
+  {
+    return log_.current();
+  }
+
+  index_t
+  commit_index() const
+  {
+    return commit_index_;
+  }
+  void
+  commit_index(index_t const & idx)
+  {
+    assert(commit_index_ <= idx);
+    assert(idx <= current_index());
+    commit_index_ = idx;
+  }
+
+  index_t
+  last_applied_index() const
+  {
+    return last_applied_index_;
+  }
+  void
+  last_applied_index(index_t const & idx)
+  {
+    last_applied_index_ = idx;
+  }
+
   term_t
   last_log_term() const
   {
@@ -225,7 +288,7 @@ public:
 
     if (0 < index)
     {
-      std::shared_ptr<entry_t> e = log_.at(index);
+      std::shared_ptr<entry_t> e = get(index);
 
       if (e)
         return e->term;
@@ -236,26 +299,52 @@ public:
 
 public:
   status_t
+  apply_entry()
+  {
+    // if (!is_apply_allowed())
+    //  return status_t::fail;
+
+    if (last_applied_index_ == commit_index())
+      return status_t::fail;
+
+    index_t log_index = last_applied_index_ + 1;
+    std::shared_ptr<entry_t> e = get(log_index);
+    if (e == nullptr)
+      return status_t::fail;
+
+    ++last_applied_index_;
+    // FIXME: apply log
+
+    if (log_index == voting_cfg_change_log_index_)
+      voting_cfg_change_log_index_ = -1;
+
+    return status_t::ok;
+  }
+
+public:
+  status_t
   append(entry_t const & e)
   {
     return convert(log_.append(e));
   }
 
   std::shared_ptr<entry_t>
-  get(index_t const & index)
+  get(index_t const & index) const
   {
     return log_.at(index);
   }
 
 public:
-  // void become_follower()
-  //{
-  //  timeout_elasped_ = 0;
-  //}
+  void
+  become_follower()
+  {
+    state_ = state_t::follower;
+    randomize_election_timeout();
+    elapsed_timeout_ = 0ms;
+  }
 
-public:
   status_t
-  election_start()
+  become_candidate()
   {
     status_t ret = current_term(current_term() + 1);
     if (any(ret))
@@ -270,7 +359,10 @@ public:
 
     vote_for(this_node_);
     leader_ = nullptr;
-    fsm_(event_t::election);
+    state_ = state_t::candidate;
+
+    randomize_election_timeout();
+    elapsed_timeout_ = 0ms;
 
     for (auto & p : nodes_)
     {
@@ -285,41 +377,53 @@ public:
     return status_t::ok;
   }
 
-public:
-  int
-  periodic(std::chrono::microseconds p)
+  status_t
+  become_leader()
   {
-    timeout_elasped_ = timeout_elasped_ + p;
+    state_ = state_t::leader;
+    leader_ = this_node_;
 
-    if (num_voting_nodes() == 1 && this_node_->is_voting() && !is_leader())
+    elapsed_timeout_ = 0ms;
+    for (auto & it : nodes_)
     {
-      // FIXME: become leader
+      auto node = it.second;
+
+      if (node == this_node_ || node->is_active())
+        continue;
+
+      node->next_index(current_index() + 1);
+      node->match_index(0);
+
+      // FIXME: send appendentries
     }
 
-    if (is_leader())
-    {
-      if (request_timeout_ <= timeout_elasped_)
-      {
-        // FIXME: send_appendentries_all
-      }
-    }
-    else if (election_timeout_rand_ < timeout_elasped_)
-    {
-    }
+    return status_t::ok;
   }
 
 public:
-  int
-  send_request_vote(std::shared_ptr<node_t> node)
+  status_t
+  election_start()
+  {
+    return become_candidate();
+  }
+
+public:
+  template <typename F>
+  status_t
+  send_request_vote(std::shared_ptr<node_t> node, F && f)
   {
     assert(node != nullptr);
     assert(node != this_node_);
 
     vote_request_t msg{current_term_, node->id(), current_index(), last_log_term()};
 
-    // FIXME call send_msg
-    // return f(node, msg);
-    return 0;
+    return f(node, msg);
+  }
+
+  status_t
+  send_request_vote(std::shared_ptr<node_t> node)
+  {
+    return send_request_vote(node, [](auto, auto) { return status_t::ok; });
   }
 
 public:
@@ -331,65 +435,78 @@ public:
   status_t
   recv_vote_response(std::shared_ptr<node_t> node, vote_response_t const & resp);
 
-  // int raft_recv_vote_response(std::shared_ptr<node_t> node,
-  //                            vote_response_t & resp)
-  //{
-  //  else if (current_term() < resp.term)
-  //  {
-  //    int ret = current_term(resp.term);
-  //    if (ret)
-  //      return ret;
-
-  //    fsm_(event_t::high_term, [] ()
-  //    {
-  //    });
-
-  //    assert(fsm_.state() == state_t::follower);
-  //    leader_ = nullptr;
-  //  }
-  //  else if (current_term() != resp.term)
-  //  {
-  //    return 0;
-  //  }
-
-  //  switch (resp.vote)
-  //  {
-  //    case rpc::vote_t::granted:
-  //      if (node)
-  //        node->has_vote_for_me(true);
-  //      // FIXME
-  //      break;
-
-  //    case rpc::vote_t::not_granted:
-  //      break;
-  //  }
-
-  //  return 0;
-  //}
-
 public:
   state_t
   state() const
   {
-    return fsm_.state();
+    return state_;
+  }
+
+  void
+  state(state_t state)
+  {
+    state_ = state;
   }
 
   bool
   is_leader() const
   {
-    return fsm_.state() == state_t::leader;
+    return state_ == state_t::leader;
   }
 
   bool
   is_candidate() const
   {
-    return fsm_.state() == state_t::candidate;
+    return state_ == state_t::candidate;
   }
 
   bool
   is_follower() const
   {
-    return fsm_.state() == state_t::follower;
+    return state_ == state_t::follower;
+  }
+
+public:
+  void
+  election_timeout(std::chrono::milliseconds t)
+  {
+    election_timeout_ = t;
+  }
+
+  std::chrono::milliseconds
+  election_timeout() const
+  {
+    return election_timeout_;
+  }
+
+  std::chrono::milliseconds
+  elapsed_timeout() const
+  {
+    return elapsed_timeout_;
+  }
+
+  status_t
+  periodic(std::chrono::milliseconds p)
+  {
+    elapsed_timeout_ = elapsed_timeout_ + p;
+
+    if (num_voting_nodes() == 1 && this_node_->is_voting() && !is_leader())
+    {
+      become_leader();
+    }
+
+    if (is_leader())
+    {
+      if (request_timeout_ <= elapsed_timeout_)
+      {
+        // FIXME: send_appendentries_all
+      }
+    }
+    else if (election_timeout_rand_ < elapsed_timeout_)
+    {
+    }
+
+    return status_t::ok;
   }
 
 private:
@@ -403,8 +520,11 @@ private:
 
 private:
   term_t current_term_;
+  index_t commit_index_;
+  index_t last_applied_index_;
+  index_t voting_cfg_change_log_index_;
 
-  std::chrono::milliseconds timeout_elasped_;
+  std::chrono::milliseconds elapsed_timeout_;
   std::chrono::milliseconds request_timeout_;
   std::chrono::milliseconds election_timeout_;
   std::chrono::milliseconds election_timeout_rand_;
@@ -414,7 +534,8 @@ private:
 
   log_t log_;
 
-  fsm fsm_;
+  // fsm fsm_;
+  state_t state_;
 
   nodes_t nodes_;
   std::shared_ptr<node_t> this_node_;

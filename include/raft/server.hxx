@@ -3,10 +3,14 @@
 namespace raft
 {
 
-template <typename T, typename node_id_t, typename term_t_, typename index_id_t_>
+template <typename T,
+          typename node_user_data_t,
+          typename node_id_t,
+          typename term_t_,
+          typename index_id_t_>
 bool
-server<T, node_id_t, term_t_, index_id_t_>::should_grant_vote(std::shared_ptr<node_t> node,
-                                                              vote_request_t const & req)
+server<T, node_user_data_t, node_id_t, term_t_, index_id_t_>::should_grant_vote(
+  std::shared_ptr<node_t> node, vote_request_t const & req)
 {
   if (!node->is_voting())
     return false;
@@ -14,14 +18,14 @@ server<T, node_id_t, term_t_, index_id_t_>::should_grant_vote(std::shared_ptr<no
   if (req.term < current_term())
     return false;
 
-  if (vote_for() != nullptr)
+  if (voted_for_ != nullptr)
     return false;
 
   index_id_t idx = current_index();
   if (idx == 0)
     return true;
 
-  std::shared_ptr<entry_t> entry = log_.get(req.idx);
+  std::shared_ptr<entry_t> entry = log_.at(idx);
   term_t entry_term;
 
   if (entry)
@@ -38,19 +42,30 @@ server<T, node_id_t, term_t_, index_id_t_>::should_grant_vote(std::shared_ptr<no
   return false;
 }
 
-template <typename T, typename node_id_t, typename term_t_, typename index_id_t_>
+template <typename T,
+          typename node_user_data_t,
+          typename node_id_t,
+          typename term_t_,
+          typename index_id_t_>
 status_t
-server<T, node_id_t, term_t_, index_id_t_>::recv_vote_request(std::shared_ptr<node_t> node,
-                                                              vote_request_t const & req,
-                                                              vote_response_t & resp)
+server<T, node_user_data_t, node_id_t, term_t_, index_id_t_>::recv_vote_request(
+  std::shared_ptr<node_t> node, vote_request_t const & req, vote_response_t & resp)
 {
   status_t ret = status_t::ok;
 
   if (node == nullptr)
+  {
     node = node_get(req.candidate_id);
+    if (node == nullptr)
+    {
+      node = node_add(req.candidate_id);
+      if (node == nullptr)
+        return status_t::enomem;
+    }
+  }
 
   /* Reject request if we have a leader */
-  if (leader_ != nullptr && leader_ != node && timeout_elasped_ < election_timeout_)
+  if (leader_ != nullptr && leader_ != node && elapsed_timeout_ < election_timeout_)
   {
     resp.vote = rpc::vote_t::not_granted;
     goto end;
@@ -65,12 +80,11 @@ server<T, node_id_t, term_t_, index_id_t_>::recv_vote_request(std::shared_ptr<no
       goto end;
     }
 
-    // FIXME -> become_follower
-    fsm_(event_t::high_term);
+    become_follower();
     leader_ = nullptr;
   }
 
-  if (should_grant_vote(req))
+  if (should_grant_vote(node, req))
   {
     /* It shouldn't be possible for a leader or candidate to grant a vote
      * Both states would have voted for themselves */
@@ -83,7 +97,7 @@ server<T, node_id_t, term_t_, index_id_t_>::recv_vote_request(std::shared_ptr<no
       resp.vote = rpc::vote_t::granted;
 
     leader_ = nullptr;
-    timeout_elasped_ = 0;
+    elapsed_timeout_ = 0ms;
   }
   else
   {
@@ -98,6 +112,64 @@ server<T, node_id_t, term_t_, index_id_t_>::recv_vote_request(std::shared_ptr<no
 end:
   resp.term = current_term();
   return ret;
+}
+
+template <typename T,
+          typename node_user_data_t,
+          typename node_id_t,
+          typename term_t_,
+          typename index_id_t_>
+status_t
+server<T, node_user_data_t, node_id_t, term_t_, index_id_t_>::recv_vote_response(
+  std::shared_ptr<node_t> node, vote_response_t const & resp)
+{
+  if (!is_candidate())
+  {
+    return status_t::ok;
+  }
+  else if (current_term() < resp.term)
+  {
+    auto ret = current_term(resp.term);
+    if (any(ret))
+      return ret;
+
+    become_follower();
+    leader_ = nullptr;
+    return status_t::ok;
+  }
+  else if (current_term() != resp.term)
+  {
+    /* The node who voted for us would have obtained our term.
+     * Therefore this is an old message we should ignore.
+     * This happens if the network is pretty choppy. */
+    return status_t::ok;
+  }
+
+  switch (resp.vote)
+  {
+    case rpc::vote_t::granted:
+    {
+      if (node)
+        node->has_vote_for_me(1);
+      if (is_majority(num_voting_nodes(), num_voting_nodes_for_me()))
+      {
+        become_leader();
+      }
+      break;
+    }
+
+    case rpc::vote_t::not_granted:
+      break;
+
+    case rpc::vote_t::node_not_found:
+      // FIXME: disconnected?
+      break;
+
+    default:
+      assert(false);
+  }
+
+  return status_t::ok;
 }
 
 } /** !raft  */
